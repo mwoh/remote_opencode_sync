@@ -50,3 +50,48 @@ pkg_install() {
     *) return 1 ;;
   esac
 }
+
+# pkg_remove <pkg_name> — uninstalls via the detected package manager. Returns non-zero on failure.
+pkg_remove() {
+  local name="$1"
+  local inst; inst="$(detect_installer)"
+  case "$inst" in
+    apt-get) sudo apt-get remove -y "$name" ;;
+    brew) brew uninstall "$name" ;;
+    dnf) sudo dnf remove -y "$name" ;;
+    pacman) sudo pacman -R --noconfirm "$name" ;;
+    *) return 1 ;;
+  esac
+}
+
+# --- Uninstall manifest helpers -------------------------------------------
+# The manifest is a plain key=value file (no jq dependency) written to a
+# location OUTSIDE the toolkit clone, so it survives an uninstall that removes
+# the clone itself. Set MANIFEST=<path> before sourcing these.
+#
+# Semantic:
+#   mf_set        — write/replace a key (facts that refresh each run)
+#   mf_keep       — write a key only if absent (first-run facts, preserve later)
+#   mf_installed  — like mf_keep, but if a previous run recorded 'yes' (we
+#                   installed it), keep 'yes' even if it looks pre-existing now
+#                   (re-runs of setup must not forget what we installed).
+
+mf_set() {
+  local key="$1" val="${2:-}"
+  grep -v "^${key}=" "$MANIFEST" > "$MANIFEST.tmp" 2>/dev/null || true
+  mv "$MANIFEST.tmp" "$MANIFEST" 2>/dev/null || true
+  printf '%s=%q\n' "$key" "$val" >> "$MANIFEST"
+}
+
+mf_keep() {
+  local key="$1" val="${2:-}"
+  grep -q "^${key}=" "$MANIFEST" 2>/dev/null || printf '%s=%q\n' "$key" "$val" >> "$MANIFEST"
+}
+
+mf_installed() {
+  local key="$1" val="$2"
+  if grep -q "^${key}=yes$" "$MANIFEST" 2>/dev/null; then
+    return 0
+  fi
+  mf_set "$key" "$val"
+}

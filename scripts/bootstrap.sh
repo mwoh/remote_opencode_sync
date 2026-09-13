@@ -70,3 +70,4 @@ echo
 echo "Done. Toolkit at: $INSTALL_DIR"
 echo "  New project?  $INSTALL_DIR/scripts/new-project.sh <repo-name>"
 echo "  Update later? re-run this same script (pull + idempotent setup)"
+echo "  Uninstall?    $INSTALL_DIR/scripts/uninstall.sh"

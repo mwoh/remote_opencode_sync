@@ -231,6 +231,32 @@ For heavy tasks you can run opencode **server mode on the desktop** and drive th
 live session from the light laptop — no sync needed for that session. Complement, not a
 replacement, for git sync. Details in [docs/daily-workflow.md](docs/daily-workflow.md).
 
+## Uninstalling
+
+Everything the install creates is tracked in a manifest
+(`~/.local/state/remote_opencode_sync/uninstall.conf`), and the reverse installer
+removes **only what it created**:
+
+```
+~/.local/share/remote_opencode_sync/scripts/uninstall.sh
+```
+
+- **Default (and `--yes`):** removes the toolkit clone, the session-sync plugin,
+  and any git identity *setup configured* — and keeps your tool packages, `gh`
+  login, and SSH key (all safe to have around).
+- A short questionnaire (or `--no-tools`, `--no-auth`, `--no-ssh-key`,
+  `--no-identity`, `--no-plugin`, `--no-clone`) opts in/out of each category.
+  Tool packages are offered **per tool** and only if setup itself installed them —
+  anything you already had is never removed.
+- `--dry-run` previews every step without changing anything.
+- Installs from before the manifest existed can't be attributed safely — the
+  script removes the clone + plugin and tells you what it left alone.
+
+**Your projects are never touched.** If you also want a project's sync files
+(`AGENTS.md`, `CONTINUE.md`, `opencode.jsonc`, `.env.example`, `session-logs/`)
+gone, delete them from that repo and revert the `remote_opencode_sync` marker
+section of its `.gitignore` — the uninstaller won't do it for you.
+
 ## Security
 
 - Private repos only; never commit secrets. `.env` is gitignored; commit only `.env.example`.

@@ -52,6 +52,11 @@ A single global opencode plugin installed once per machine at
 
 `/resume` and `/handoff` still exist as manual fallback commands for edge cases.
 
+Uninstall support: `setup-machine.sh` writes a manifest
+(`~/.local/state/remote_opencode_sync/uninstall.conf`, outside the repo) recording what
+it created; `scripts/uninstall.sh` consumes it to remove only those things, with
+per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
+
 ## Components
 
 | Path | Purpose |
@@ -69,7 +74,8 @@ A single global opencode plugin installed once per machine at
 | `scripts/update.sh` | Update an already-installed toolkit |
 | `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`) |
 | `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key) |
-| `scripts/lib.sh` | Shared helpers (placeholder relink, package install) |
+| `scripts/uninstall.sh` | Reverse of setup: removes only what the install created (per the manifest), per-tool/auth/ssh questionnaire, `--dry-run`/`--yes` |
+| `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest) |
 | `docs/machine-setup.md` | First-step checklist for a new machine (what the script does) |
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 
