@@ -26,6 +26,31 @@ cd <name>
 opencode
 ```
 
+## Adopt an existing project (already-started folder)
+
+```
+scripts/new-project.sh --existing <dir> [--name <repo>] [--resolve append|ask|skip|overwrite] [--no-scan] [--force]
+```
+
+- Preserves existing git history; initializes if the dir isn't a repo; won't repoint an
+  existing `origin` without `--force`.
+- Seeds templates without clobbering; `--resolve` (default `append`) appends the workflow
+  rules/ignore patterns behind a marker and reports what it skipped.
+- `--scan` (default) drops a FIRST STEP into `CONTINUE.md` telling the first opencode
+  session to scan the codebase and fill `AGENTS.md` Project overview + Status.
+  `--no-scan` makes it ask you for the background instead.
+- Requires a git identity — `scripts/setup-machine.sh` configures one from GitHub.
+
+## Updating the toolkit
+
+Once installed, either re-run the bootstrap curl command or:
+
+```
+~/.local/share/remote_opencode_sync/scripts/update.sh
+```
+
+Pull + setup + placeholder re-link. Restart opencode afterward to load a refreshed plugin.
+
 ## New/unseen machine — Stage 1 (once per machine)
 
 ```

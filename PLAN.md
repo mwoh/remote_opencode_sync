@@ -58,13 +58,18 @@ A single global opencode plugin installed once per machine at
 | --- | --- |
 | `PLAN.md` | This document |
 | `templates/AGENTS.md.tpl` | The base prompt / workflow rules (Layer 1) |
+| `templates/workflow-rules.md.tpl` | Rules-only block appended to existing `AGENTS.md` on adopt |
+| `templates/.gitignore.append.tpl` | Ignore patterns appended to existing `.gitignore` on adopt |
 | `templates/CONTINUE.md.tpl` | Handoff log starter with `LAST SESSION` block |
 | `templates/opencode.jsonc.tpl` | Project config: `/resume`, `/handoff`, `/sync` commands |
 | `templates/.gitignore.tpl` | Excludes deps, builds, env files, machine-local state |
 | `templates/.env.example.tpl` | Reference for secret env vars (real `.env` is gitignored) |
 | `plugins/session-sync.js` | Global zero-touch sync plugin (Layer 2) |
-| `scripts/new-project.sh` | Create + seed a new private GitHub repo |
-| `scripts/setup-machine.sh` | Lazy one-time machine setup |
+| `scripts/bootstrap.sh` | One-liner install / update entry point (curl pipe) |
+| `scripts/update.sh` | Update an already-installed toolkit |
+| `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`) |
+| `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key) |
+| `scripts/lib.sh` | Shared helpers (placeholder relink, package install) |
 | `docs/machine-setup.md` | First-step checklist for a new machine (what the script does) |
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 
@@ -78,6 +83,16 @@ A single global opencode plugin installed once per machine at
    - `gh repo create <name> --private --clone`, seeds the templates, first commit + push.
 2. `cd <name> && opencode` — plugin pulls (nothing to pull on day one), base prompt
    orients you.
+
+### Adopt an existing directory (run once)
+`scripts/new-project.sh --existing <dir> [--name <repo>] [--resolve …] [--no-scan]
+[--force]` — preserves history, seeds/workflow rules without clobbering (append by
+default), drops a FIRST STEP for the first session's scan-and-orient pass, commits +
+pushes.
+
+### Project updates (run from any machine)
+`~/.local/share/remote_opencode_sync/scripts/update.sh` (or re-run the bootstrap curl) —
+pull toolkit, re-run setup (idempotent), re-link placeholders, restart opencode.
 
 ### New/unseen machine
 - **Stage 1 (once per machine):** `docs/machine-setup.md` or the lazy
@@ -116,7 +131,9 @@ Not primary here since you typically run one machine at a time; details in
 ## Roadmap / status
 
 - [x] PLAN, templates, plugin, scripts, docs written
-- [ ] `git init` + first commit of this toolkit repo
-- [ ] Create the GitHub repo for the toolkit and push
+- [x] `git init` + first commit of this toolkit repo
+- [x] Create the GitHub repo for the toolkit and push
+- [x] Adopt-existing mode + update.sh (v1.1.0) implemented and dry-run tested
+- [x] Released v1.0.0 / v1.1.0 with installer SHA pins
 - [ ] Run `scripts/setup-machine.sh` (or checklist) on each machine
 - [ ] `scripts/new-project.sh` a real project and verify cross-machine resume

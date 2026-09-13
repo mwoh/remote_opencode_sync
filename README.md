@@ -37,8 +37,14 @@ It installs prerequisites (git, gh, node, opencode), authenticates GitHub, sets 
 key, and installs the global session-sync plugin — everything required before you `gh repo
 clone` and `opencode` into a project.
 
-**Updates:** re-run the same command. It pulls the latest toolkit and re-runs setup (both
-idempotent).
+**Updates:** re-run the same command, or from an installed copy run:
+
+```
+~/.local/share/remote_opencode_sync/scripts/update.sh
+```
+
+Both pull the latest toolkit and re-run setup (idempotent). Restart opencode after an update
+to load a refreshed plugin.
 
 **Safer/pinned variant:** download, verify a known SHA, then run — do not pipe straight to
 `bash`:
@@ -63,8 +69,10 @@ plugins/
   session-sync.js           global zero-touch sync plugin (Layer 2)
 scripts/
   bootstrap.sh              one-liner install/update entry point
-  new-project.sh            create + seed a new private GitHub repo
+  update.sh                 update an already-installed toolkit
+  new-project.sh            create or adopt a project (see below)
   setup-machine.sh          lazy one-time machine setup
+  lib.sh                    shared helpers (placeholders, package install)
 docs/
   machine-setup.md          new-machine checklist (the first step)
   daily-workflow.md         everyday playbook + advanced options
@@ -107,6 +115,30 @@ first commit + push. Then:
 cd <repo-name>
 opencode
 ```
+
+## Adopting an existing project
+
+Already have a folder full of code/notes you want to bring into the flow? No need to start
+from an empty repo:
+
+```
+scripts/new-project.sh --existing <dir>
+```
+
+- Default repo name = basename of the directory (override with `--name <repo>`).
+- Existing git history (if any) is **preserved**; if the dir isn't a repo it's initialized.
+- Refuses to repoint an existing git `origin` unless you pass `--force`.
+- Won't clobber existing files (`AGENTS.md`, `.gitignore`, …). `--resolve` controls conflicts:
+  - `append` (default): appends the workflow rules + ignore patterns behind a marker,
+    skips the rest, and prints a clear "things to review" list.
+  - `ask`: interactive per-file prompt (skip / append / overwrite / view template).
+  - `skip` / `overwrite`: never touch / always replace.
+- `--scan` (default): writes a FIRST STEP telling the first opencode session to scan the
+  codebase and fill in `AGENTS.md`'s Project overview + `CONTINUE.md`'s Status, then
+  propose next steps. Pass `--no-scan` to have it ask you for the background instead.
+
+Requires a git identity (`git config user.name/email`) — `scripts/setup-machine.sh` sets
+it from your GitHub profile automatically.
 
 ## Working on an existing project
 

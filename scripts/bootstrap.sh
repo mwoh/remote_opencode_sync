@@ -62,21 +62,9 @@ echo ">> Running setup-machine.sh..."
 
 # --- link placeholders to the real GitHub handle ---
 echo ">> Linking @@GITHUB_USER@@ placeholders to your GitHub account..."
-GH_USER=""
-if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-  GH_USER="$(gh api user --jq .login 2>/dev/null || true)"
-fi
-[[ -z "$GH_USER" && -n "${GITHUB_USER:-}" ]] && GH_USER="$GITHUB_USER"
-if [[ -z "$GH_USER" ]]; then
-  read -r -p "  GitHub username for README/docs links: " GH_USER
-fi
-if [[ -n "$GH_USER" ]]; then
-  grep -rlF "@@GITHUB_USER@@" --include="*.md" "$INSTALL_DIR" 2>/dev/null | while read -r f; do
-    sed "s|@@GITHUB_USER@@|$GH_USER|g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-  done
-else
-  echo "  (skipped — could not determine GitHub username)"
-fi
+# shellcheck source=lib.sh
+source "$INSTALL_DIR/scripts/lib.sh"
+relink_placeholders "$INSTALL_DIR"
 
 echo
 echo "Done. Toolkit at: $INSTALL_DIR"

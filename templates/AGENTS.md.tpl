@@ -5,6 +5,12 @@ This project lives in a Git repository shared across several of the user's machi
 from any other machine at any moment. Treat the git remote as the source of truth for
 BOTH the code and the progress. Follow these rules without being reminded.
 
+## Project overview
+
+_(What this project is, where it stands: purpose, entry points, key modules, build/test
+commands, current state. Filled in by the first opencode session when adopting an
+existing project, or by the user as the project evolves.)_
+
 ## 1. Session start — orient before touching anything
 - Confirm git state is sane: `git status`. If there are pre-existing uncommitted changes
   you did not make, leave them alone and say so.

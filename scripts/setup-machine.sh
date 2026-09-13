@@ -18,30 +18,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 PLUGIN_SRC="$ROOT_DIR/plugins/session-sync.js"
 
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
+
 FAILED=0
 warn() { echo "  ! $*" >&2; }
 ok() { echo "  + $*"; }
 banner() { echo; echo "== $* =="; }
-
-detect_installer() {
-  if command -v apt-get >/dev/null 2>&1; then echo "apt-get"
-  elif command -v brew >/dev/null 2>&1; then echo "brew"
-  elif command -v dnf >/dev/null 2>&1; then echo "dnf"
-  elif command -v pacman >/dev/null 2>&1; then echo "pacman"
-  else echo ""; fi
-}
-
-pkg_install() {
-  local name="$1"
-  local inst; inst="$(detect_installer)"
-  case "$inst" in
-    apt-get) sudo apt-get install -y "$name" ;;
-    brew) brew install "$name" ;;
-    dnf) sudo dnf install -y "$name" ;;
-    pacman) sudo pacman -S --noconfirm "$name" ;;
-    *) return 1 ;;
-  esac
-}
 
 ensure_tool() {
   local name="$1"
@@ -94,6 +77,24 @@ else
   gh ssh-key add "$HOME/.ssh/id_ed25519.pub" --title "$(hostname)-opencode" \
     && ok "SSH key registered on GitHub (title: $(hostname)-opencode)" \
     || warn "could not register SSH key — add $HOME/.ssh/id_ed25519.pub to GitHub manually"
+fi
+
+banner "Git identity"
+if git config --global user.email >/dev/null 2>&1 && git config --global user.name >/dev/null 2>&1; then
+  ok "already configured: $(git config --global user.name) <$(git config --global user.email)>"
+elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  local login GH_NAME GH_EMAIL
+  login="$(gh api user --jq .login 2>/dev/null || true)"
+  GH_NAME="$(gh api user --jq '.name // empty' 2>/dev/null || true)"
+  [[ -n "$GH_NAME" ]] || GH_NAME="$login"
+  GH_EMAIL="$(gh api user --jq '.email // empty' 2>/dev/null || true)"
+  [[ -n "$GH_EMAIL" ]] || GH_EMAIL="$login@users.noreply.github.com"
+  git config --global user.name "$GH_NAME"
+  git config --global user.email "$GH_EMAIL"
+  ok "set global git identity: $GH_NAME <$GH_EMAIL>"
+else
+  warn "git identity not set — do it manually:"
+  warn "  git config --global user.name 'Your Name'; git config --global user.email 'you@example.com'"
 fi
 
 banner "session-sync plugin"
