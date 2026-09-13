@@ -35,7 +35,8 @@ curl -fsSL https://raw.githubusercontent.com/mwoh/remote_opencode_sync/main/scri
 
 It installs prerequisites (git, gh, node, opencode), authenticates GitHub, sets up an SSH
 key, and installs the global session-sync plugin — everything required before you `gh repo
-clone` and `opencode` into a project.
+clone` and `opencode` into a project. If opencode is already running on this machine,
+restart it to load the plugin.
 
 **Updates:** re-run the same command, or from an installed copy run:
 
@@ -46,12 +47,12 @@ clone` and `opencode` into a project.
 Both pull the latest toolkit and re-run setup (idempotent). Restart opencode after an update
 to load a refreshed plugin.
 
-**Safer/pinned variant:** download, verify a known SHA, then run — do not pipe straight to
-`bash`:
+**Safer/pinned variant:** download, verify the current SHA from the latest release notes,
+then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.0.0/scripts/bootstrap.sh
-shasum -a 256 bootstrap.sh   # compare against the release notes
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.1.0/scripts/bootstrap.sh
+shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
 
@@ -78,22 +79,63 @@ docs/
   daily-workflow.md         everyday playbook + advanced options
 ```
 
+### What each piece does
+
+- **`plugins/session-sync.js`** — the zero-touch sync layer (Layer 2): auto-pull/rebase on
+  session start, `wip:` snapshot on idle, CONTINUE.md + session log into context
+  compaction. Installed once per machine — this is what makes sync automatic.
+- **`templates/`** — what gets seeded into every project (Layer 1): the `AGENTS.md` rules,
+  `CONTINUE.md` handoff log, `opencode.jsonc` fallback commands, `.gitignore`,
+  `.env.example`. These travel *inside* the project repo.
+- **`bootstrap.sh`** — the `curl | bash` entry point: clone the toolkit + run setup.
+- **`setup-machine.sh`** — per-machine setup: tools, `gh auth`, SSH key, git identity,
+  plugin install. Idempotent, safe to re-run.
+- **`update.sh`** — refresh an installed toolkit: pull latest + re-run setup.
+- **`new-project.sh`** — per-project, once: create (or adopt) the repo, seed the
+  templates, first commit + push.
+- **`lib.sh`** — internal helpers; you never call it directly.
+
+In one line: **setup scripts are once per machine**, **`new-project.sh` is once per
+project**, and **the plugin is zero daily**.
+
 ## Setup
 
-The quick path above (`curl | bash`) does all of this for you. By hand:
+> **Path note:** all `scripts/…` commands below assume you're inside the toolkit clone.
+> After the one-liner that's `~/.local/share/remote_opencode_sync` — already cloned for
+> you.
+
+There are three ways to get a machine ready, depending on what you're doing:
+
+| You want to… | Run | What you get |
+| --- | --- | --- |
+| Full setup on a machine with nothing (lazy default) | the one-liner above (`curl \| bash`) | prerequisites, gh auth, SSH key, git identity, the session-sync plugin, and a local toolkit clone |
+| The same, but the toolkit is already cloned here | `scripts/setup-machine.sh` | the machine side: prerequisites, gh auth, SSH key, git identity, the plugin — no re-clone |
+| Just open a project that already exists on GitHub | *nothing* — skip to *Working on an existing project* | the project + its own `AGENTS.md` (Layer-1 rules); **no** plugin, **no** SSH key, **no** git identity |
+
+> **Skipping setup?** You can still `gh repo clone` and work — the rules travel inside the
+> repo and will run. You just won't get the zero-touch safety net (no auto-pull/rebase on
+> session start, no automatic `wip:` backups on idle, no compaction continuity), and you'll
+> have to handle auth + identity yourself — SSH pushes fail without a registered key, and
+> commits fail until `user.name`/`user.email` are set. Catch up any time by running the
+> one-liner or `setup-machine.sh` — both are idempotent.
+
+The one-liner does the steps below automatically; by hand they are:
 
 ### 1. First time on a new machine (once per machine)
 
-Read [docs/machine-setup.md](docs/machine-setup.md), or run the lazy version:
+Read [docs/machine-setup.md](docs/machine-setup.md), or run:
 
 ```
 scripts/setup-machine.sh
 ```
 
 It installs prerequisites (git, gh, node, opencode), runs `gh auth login`, sets up an SSH
-key, and installs the global session-sync plugin.
+key, a git identity (from your GitHub profile), and installs the global session-sync
+plugin. Re-running is safe (idempotent).
 
 ### 2. Clone the toolkit (so it exists on this machine too)
+
+Only needed if you haven't used the one-liner:
 
 ```
 gh repo clone @@GITHUB_USER@@/remote_opencode_sync
@@ -119,7 +161,8 @@ opencode
 ## Adopting an existing project
 
 Already have a folder full of code/notes you want to bring into the flow? No need to start
-from an empty repo:
+from an empty repo: `--existing` creates a new **private** GitHub repo for the folder and
+pushes your existing history into it.
 
 ```
 scripts/new-project.sh --existing <dir>
@@ -140,9 +183,10 @@ scripts/new-project.sh --existing <dir>
 Requires a git identity (`git config user.name/email`) — `scripts/setup-machine.sh` sets
 it from your GitHub profile automatically.
 
-## Working on an existing project
+## Working on an existing project (a repo already on GitHub)
 
-First time on a machine (once per project):
+For a project that's already on GitHub — e.g. you created it on another machine — and you
+want to open it here. First time on a machine (once per project):
 
 ```
 gh repo clone <repo-name>
@@ -158,6 +202,7 @@ cd <repo-name>
 opencode
 ```
 
+opencode auto-loads each project's `AGENTS.md` — there's no per-project config to set up.
 The plugin pulls and orients you from `CONTINUE.md`. Work, close the laptop, switch
 machines, and repeat. **No `/resume`, no `/handoff` needed** — those commands exist only
 as manual fallbacks.

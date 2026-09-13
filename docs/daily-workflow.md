@@ -13,6 +13,8 @@ the practical playbook.
 
 ## New project (from any machine)
 
+Run from your toolkit clone (`~/.local/share/remote_opencode_sync`):
+
 ```
 scripts/new-project.sh <name>
 ```
@@ -70,6 +72,12 @@ opencode
 ```
 
 The plugin pulls, the `AGENTS.md` rules read `CONTINUE.md` and you're oriented.
+
+> **Skipped Stage 1 (setup-machine.sh)?** You can still do the above — the rules travel
+> inside the repo and will run. What you give up: the session-sync plugin (no auto-pull on
+> start, no `wip:` backups on idle), a registered SSH key (SSH pushes fail), and an
+> auto-set git identity (commits fail until you set `user.name`/`user.email`). Stage 1 is
+> once per machine, idempotent, and stops at warnings — run it whenever.
 
 ## Daily start
 
@@ -147,5 +155,5 @@ a network path between them. It complements, not replaces, git sync.
 | "start pull failed" logged | resolve rebase conflict (see above), then continue |
 | "stash pop conflicted" | run `git stash pop` manually and resolve |
 | Idle snapshot not pushing | check `git status`; remote down? push later manually |
-| Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode |
+| Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode — if it was never installed, this machine skipped `setup-machine.sh` |
 | New machine, no projects yet | run `scripts/new-project.sh` or `gh repo clone <name>` |

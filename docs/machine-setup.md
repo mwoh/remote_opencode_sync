@@ -53,6 +53,8 @@ cp <toolkit>/plugins/session-sync.js ~/.config/opencode/plugins/session-sync.js
 
 ## 5. Clone the toolkit repo (so it exists on this machine too)
 
+> Skip this if you used the one-liner at the top — it already cloned the toolkit for you.
+
 ```
 gh repo clone <you>/remote_opencode_sync
 ```
@@ -68,7 +70,8 @@ ls ~/.config/opencode/plugins/
 
 - Bring a project onto this machine: `gh repo clone <project>` → `cd <project>` →
   install deps → `opencode`.
-- Create a new project from anywhere: `scripts/new-project.sh <name>`.
+- Create a new project from anywhere: `scripts/new-project.sh <name>` (run from the toolkit
+  root).
 
 ## What setup-machine.sh automates
 
