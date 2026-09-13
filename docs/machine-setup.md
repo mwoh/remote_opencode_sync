@@ -1,8 +1,15 @@
 # Machine Setup Checklist
 
-First step for a brand-new machine. Do this once per machine. A lazy automated version
-lives in `scripts/setup-machine.sh` and does everything below; this doc is the reference
-for what it does (use it if you prefer to run the checks by hand).
+First step for a brand-new machine. Do this once per machine.
+
+**Fastest path (does all of this automatically):**
+
+```
+curl -fsSL https://raw.githubusercontent.com/mwoh/remote_opencode_sync/main/scripts/bootstrap.sh | bash
+```
+
+The rest of this doc is the reference for what that script (and `scripts/setup-machine.sh`)
+does, in case you prefer to run the checks by hand.
 
 ## 1. Install prerequisites
 

@@ -25,6 +25,30 @@ continuously committed + pushed by an opencode **base prompt** (Layer 1) and a g
 
 See [PLAN.md](PLAN.md) for the full architecture.
 
+## Install on any machine (one-liner)
+
+On a brand-new machine, this is the only command you need to remember:
+
+```
+curl -fsSL https://raw.githubusercontent.com/mwoh/remote_opencode_sync/main/scripts/bootstrap.sh | bash
+```
+
+It installs prerequisites (git, gh, node, opencode), authenticates GitHub, sets up an SSH
+key, and installs the global session-sync plugin — everything required before you `gh repo
+clone` and `opencode` into a project.
+
+**Updates:** re-run the same command. It pulls the latest toolkit and re-runs setup (both
+idempotent).
+
+**Safer/pinned variant:** download, verify a known SHA, then run — do not pipe straight to
+`bash`:
+
+```
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.0.0/scripts/bootstrap.sh
+shasum -a 256 bootstrap.sh   # compare against the release notes
+bash bootstrap.sh
+```
+
 ## Layout
 
 ```
@@ -38,6 +62,7 @@ templates/                  per-project files seeded by new-project.sh
 plugins/
   session-sync.js           global zero-touch sync plugin (Layer 2)
 scripts/
+  bootstrap.sh              one-liner install/update entry point
   new-project.sh            create + seed a new private GitHub repo
   setup-machine.sh          lazy one-time machine setup
 docs/
@@ -46,6 +71,8 @@ docs/
 ```
 
 ## Setup
+
+The quick path above (`curl | bash`) does all of this for you. By hand:
 
 ### 1. First time on a new machine (once per machine)
 
@@ -61,7 +88,7 @@ key, and installs the global session-sync plugin.
 ### 2. Clone the toolkit (so it exists on this machine too)
 
 ```
-gh repo clone mwoh/remote_opencode_sync
+gh repo clone @@GITHUB_USER@@/remote_opencode_sync
 ```
 
 ## Creating a new project
