@@ -51,6 +51,16 @@ cp <toolkit>/plugins/session-sync.js ~/.config/opencode/plugins/session-sync.js
 
 (Where `<toolkit>` is your clone of this repo.) Restart opencode after installing.
 
+The plugin loads in every opencode session, but **only acts inside projects that carry the
+`.opencode/toolkit` marker** (seeded into each project by `new-project.sh`) — every other
+project is completely untouched. To turn it off for a single working copy on this machine:
+
+```
+touch .opencode/state/no-session-sync
+```
+
+(`.opencode/state/` is gitignored, so the opt-out stays local and never gets committed.)
+
 ## 5. Clone the toolkit repo (so it exists on this machine too)
 
 > Skip this if you used the one-liner at the top — it already cloned the toolkit for you.

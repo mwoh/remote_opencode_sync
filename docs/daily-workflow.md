@@ -64,6 +64,11 @@ Installs tools, `gh auth login`, SSH key, a global git identity from your GitHub
 the sync plugin, and an uninstall manifest (used by `scripts/uninstall.sh` to remove it
 all later).
 
+The plugin is loaded in every opencode session on the machine, but **only acts in projects
+carrying the `.opencode/toolkit` marker** that `new-project.sh` seeds — other projects are
+never touched. To disable it for a single working copy: `touch .opencode/state/no-session-sync`
+(local only, gitignored).
+
 ## New/unseen machine — Stage 2 (once per project)
 
 ```
@@ -157,6 +162,8 @@ a network path between them. It complements, not replaces, git sync.
 | "start pull failed" logged | resolve rebase conflict (see above), then continue |
 | "stash pop conflicted" | run `git stash pop` manually and resolve |
 | Idle snapshot not pushing | check `git status`; remote down? push later manually |
+| Plugin not syncing a project | project lacks the `.opencode/toolkit` marker — run `scripts/new-project.sh --existing . --resolve append` to adopt it |
+| Permanently stop auto-sync on one copy | `touch .opencode/state/no-session-sync` (local, gitignored) — or `rm .opencode/toolkit` to mark the repo non-toolkit |
 | Remove the toolkit | `~/.local/share/remote_opencode_sync/scripts/uninstall.sh` + answer the questionnaire |
 | Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode — if it was never installed, this machine skipped `setup-machine.sh` |
 | New machine, no projects yet | run `scripts/new-project.sh` or `gh repo clone <name>` |

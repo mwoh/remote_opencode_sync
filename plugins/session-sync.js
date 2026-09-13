@@ -3,6 +3,11 @@
 // Install once per machine so it applies everywhere:
 //   cp plugins/session-sync.js ~/.config/opencode/plugins/session-sync.js
 //
+// The plugin is loaded in EVERY opencode session, but only acts in projects that
+// carry the toolkit marker (`.opencode/toolkit`, seeded + committed by
+// new-project.sh) — other projects are completely untouched. A local marker
+// `.opencode/state/no-session-sync` (gitignored) opts a single working copy out.
+//
 // What it does:
 //   session.created  -> git plumbing: fetch, safe stash/pop, `pull --rebase`,
 //                       push if local-ahead & clean. Also ensures today's session log exists.
@@ -39,7 +44,7 @@ export const SessionSync = async (ctx) => {
   // Run a command string in the project worktree. Returns { ok, text }.
   const sh = async (cmd) => {
     try {
-      const r = await ctx.$\`${cmd}\`.cwd(worktree)
+      const r = await ctx.$`${cmd}`.cwd(worktree)
       return { ok: true, text: r.text ? r.text() : "" }
     } catch (err) {
       const msg = err?.stderr?.text ? err.stderr.text() : err?.message ?? String(err)
@@ -50,6 +55,24 @@ export const SessionSync = async (ctx) => {
 
   const isRepo = async () => (await git("rev-parse --is-inside-work-tree")).ok
   const hasRemote = async () => (await git("remote get-url origin")).ok
+
+  // A project is "using the toolkit" only if it carries the marker that
+  // new-project.sh seeds (committed, so clones have it too). This keeps the
+  // globally-loaded plugin a no-op in every project that isn't a toolkit one.
+  // A local (gitignored) .opencode/state/no-session-sync file opts a single
+  // working copy out on this machine.
+  let toolkitChecked = false
+  let toolkitMatch = false
+  const isToolkitProject = async () => {
+    if (toolkitChecked) return toolkitMatch
+    const mk = await sh("[ -f .opencode/toolkit ] && echo yes || echo no")
+    const opt = await sh("[ -f .opencode/state/no-session-sync ] && echo yes || echo no")
+    toolkitMatch =
+      mk.ok && mk.text.trim() === "yes" &&
+      !(opt.ok && opt.text.trim() === "yes")
+    toolkitChecked = true
+    return toolkitMatch
+  }
 
   const dateStamp = () => new Date().toISOString().slice(0, 10)
   const timeStamp = () =>
@@ -88,6 +111,10 @@ export const SessionSync = async (ctx) => {
       lastStartSync = now
 
       if (!(await isRepo())) return
+      if (!(await isToolkitProject())) {
+        await log("info", "not a toolkit project (no .opencode/toolkit marker) — skipping start sync")
+        return
+      }
       if (!(await hasRemote())) return // local-only project; nothing to sync
 
       const upstream = await git("rev-parse --abbrev-ref --symbolic-full-name @{upstream}")
@@ -144,6 +171,10 @@ export const SessionSync = async (ctx) => {
       lastIdleSync = now
 
       if (!(await isRepo())) return
+      if (!(await isToolkitProject())) {
+        await log("info", "not a toolkit project (no .opencode/toolkit marker) — skipping idle snapshot")
+        return
+      }
       if (!(await hasRemote())) return
 
       const status = await git("status --porcelain")
@@ -179,7 +210,9 @@ export const SessionSync = async (ctx) => {
 
     "experimental.session.compacting": async (_input, output) => {
       try {
+        if (!(await isToolkitProject())) return
         const cont = await catFile("CONTINUE.md")
+        if (!cont) return
         const tail = await catFile(`session-logs/${dateStamp()}-${HOST}.md`)
         const context = []
         context.push("### Sync context (from session-sync plugin)")

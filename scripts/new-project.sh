@@ -281,6 +281,8 @@ seed "$TEMPLATES_DIR/.gitignore.tpl"
 seed "$TEMPLATES_DIR/.env.example.tpl"
 mkdir -p session-logs
 [[ -f session-logs/.gitkeep ]] || touch session-logs/.gitkeep
+mkdir -p .opencode
+printf 'remote_opencode_sync\n' > .opencode/toolkit
 
 # ---- FIRST STEP orientation (existing-dir mode only) ----
 if [[ "$MODE" == "existing" && "$SCAN" -eq 1 && ! "$(grep -cF '## FIRST STEP' "CONTINUE.md" 2>/dev/null || true)" -gt 0 ]]; then
@@ -339,4 +341,4 @@ if [[ ${#TO_DO[@]} -gt 0 ]]; then
 fi
 echo
 echo "  Next: cd $PROJECT_DIR && opencode"
-[[ "$MODE" == "existing" ]] && echo "  (restart opencode if it was already open here)"
+[[ "$MODE" == "existing" ]] && echo "  (restart opencode if it was already open here)" || true

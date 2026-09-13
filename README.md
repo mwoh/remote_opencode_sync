@@ -20,6 +20,10 @@ continuously committed + pushed by an opencode **base prompt** (Layer 1) and a g
   - pulls/rebase on **session start** (auto-resume),
   - snapshots any uncommitted work as a `wip:` commit on **idle** (auto-backup),
   - injects `CONTINUE.md` + the session log into **context compaction** so continuity survives.
+  - It is loaded on every machine but **only acts in projects that carry the toolkit's
+    `.opencode/toolkit` marker** (`new-project.sh` seeds one into every project) — other
+    projects are never touched; a local `.opencode/state/no-session-sync` file turns it
+    off for a single working copy.
 - Conversation history stays on each machine's local opencode storage; what travels is the
   running summary in `CONTINUE.md` + `session-logs/` + git history — enough to fully re-orient.
 
@@ -52,7 +56,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.2.0/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.3.0/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -88,7 +92,10 @@ docs/
 
 - **`plugins/session-sync.js`** — the zero-touch sync layer (Layer 2): auto-pull/rebase on
   session start, `wip:` snapshot on idle, CONTINUE.md + session log into context
-  compaction. Installed once per machine — this is what makes sync automatic.
+  compaction. Installed once per machine — but it only runs in projects that carry the
+  `.opencode/toolkit` marker that `new-project.sh` seeds, so every other project is
+  completely untouched. A local `.opencode/state/no-session-sync` file opts a single
+  working copy out.
 - **`templates/`** — what gets seeded into (or appended to) every project (Layer 1): the
   `AGENTS.md` rules, `CONTINUE.md` handoff log, `opencode.jsonc` fallback commands,
   `.gitignore`, `.env.example` — plus `workflow-rules.md.tpl` and `.gitignore.append.tpl`,
@@ -101,7 +108,8 @@ docs/
   uninstall manifest), with a per-category/per-tool questionnaire and `--dry-run`.
 - **`update.sh`** — refresh an installed toolkit: pull latest + re-run setup.
 - **`new-project.sh`** — per-project, once: create (or adopt) the repo, seed the
-  templates, first commit + push.
+  templates + the `.opencode/toolkit` marker (this is what tells the plugin a project uses
+  the toolkit), first commit + push.
 - **`lib.sh`** — internal helpers (placeholder relink, package install/remove, uninstall
   manifest); you never call it directly.
 

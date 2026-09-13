@@ -69,7 +69,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `templates/opencode.jsonc.tpl` | Project config: `/resume`, `/handoff`, `/sync` commands |
 | `templates/.gitignore.tpl` | Excludes deps, builds, env files, machine-local state |
 | `templates/.env.example.tpl` | Reference for secret env vars (real `.env` is gitignored) |
-| `plugins/session-sync.js` | Global zero-touch sync plugin (Layer 2) |
+| `plugins/session-sync.js` | Global zero-touch sync plugin (Layer 2); acts only in projects carrying the `.opencode/toolkit` marker (opt-out: `.opencode/state/no-session-sync`) |
 | `scripts/bootstrap.sh` | One-liner install / update entry point (curl pipe) |
 | `scripts/update.sh` | Update an already-installed toolkit |
 | `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`) |
@@ -140,6 +140,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] `git init` + first commit of this toolkit repo
 - [x] Create the GitHub repo for the toolkit and push
 - [x] Adopt-existing mode + update.sh (v1.1.0) implemented and dry-run tested
-- [x] Released v1.0.0 / v1.1.0 / v1.2.0 (adopt-existing, update.sh, uninstall.sh) with installer SHA pins
+- [x] Released v1.0.0 / v1.1.0 / v1.2.0 / v1.3.0 (adopt-existing, update.sh, uninstall.sh, plugin project-gating) with installer SHA pins
 - [ ] Run `scripts/setup-machine.sh` (or checklist) on each machine
 - [ ] `scripts/new-project.sh` a real project and verify cross-machine resume
