@@ -1,0 +1,126 @@
+# Daily Workflow Reference
+
+How the whole system works day to day. Read `PLAN.md` first for the architecture; this is
+the practical playbook.
+
+## The golden rules
+
+- Git is the source of truth for **code and progress**.
+- One machine actively works at a time.
+- The tree must be clean and pushed at every session boundary.
+- The `AGENTS.md` rules in each project do the real work; the `session-sync` plugin is a
+  backup that catches leftovers.
+
+## New project (from any machine)
+
+```
+scripts/new-project.sh <name>
+```
+
+Pre-flight checks `git`, `gh`, and auth, then creates a **private** GitHub repo, clones
+it, seeds `AGENTS.md`, `CONTINUE.md`, `opencode.jsonc`, `.gitignore`, `.env.example`,
+commits, and pushes. Then:
+
+```
+cd <name>
+opencode
+```
+
+## New/unseen machine — Stage 1 (once per machine)
+
+```
+scripts/setup-machine.sh      # lazy version
+# or read docs/machine-setup.md and do it by hand
+```
+
+Installs tools, `gh auth login`, SSH key, and the global session-sync plugin.
+
+## New/unseen machine — Stage 2 (once per project)
+
+```
+gh repo clone <name>
+cd <name>
+# install deps (npm install / pip install / etc.) — deps are never synced
+opencode
+```
+
+The plugin pulls, the `AGENTS.md` rules read `CONTINUE.md` and you're oriented.
+
+## Daily start
+
+```
+cd <project>
+opencode
+```
+
+Orients you automatically (`CONTINUE.md` + auto-reconcile of any abandoned session).
+Work. That's it — commits and pushes happen per task (rules) and on idle (plugin).
+
+## Stopping / switching machines
+
+Just close the laptop. At minimum the idle-hook snapshot pushed a `wip:` commit and the
+rules kept `CONTINUE.md` current. On the next machine, `opencode` re-orients you.
+
+If you're at a natural session boundary, you can also say: "finalize this session" — the
+rule #7 (or `/handoff`) writes a clean `LAST SESSION` block, closes the session log with
+`END`, and pushes.
+
+## Explicit commands (manual fallbacks)
+
+Defined per-project in `opencode.jsonc`:
+
+- `/resume` — pull, reconcile, orient from `CONTINUE.md`.
+- `/handoff` — finalize session: close log, refresh `LAST SESSION`, commit, push.
+- `/sync` — commit + push any pending changes now.
+
+You should never *need* these; they exist for explicit control and edge cases.
+
+## Conflicts
+
+The plugin prefers `git pull --rebase`. If it fails (rare), the plugin logs an error and
+you resolve once:
+
+```
+git status          # see conflicted files
+# edit to resolve, then:
+git add <files>
+git rebase --continue
+git push
+```
+
+Note it in `CONTINUE.md`. Conflicts usually mean two machines edited the same lines.
+
+## Snapshot / `wip:` commits
+
+`wip: <host> <timestamp>` commits are the plugin's automatic safety net when you go
+idle with uncommitted work. They are safe to keep as-is. If you ever want a tidy history,
+squash them (interactive rebase) — they carry real content you can review.
+
+## Work outside opencode
+
+Direct terminal/editor edits (not done through opencode) don't fire session events, so
+they sync at the next session start/idle rather than in real time. Still safe: the
+session start plumbing fetches and rebases, and idle snapshots are committed.
+
+## Advanced option: opencode server mode
+
+For heavy tasks, you can run opencode in **server mode on the desktop** and drive that
+same live session from the light laptop (TUI/IDE/web client). No git sync needed for that
+session at all — it *is* one session.
+
+- Start the server on the desktop: `opencode serve --port 4040` (see opencode docs).
+- Connect from the light laptop and work; when done, everything is already on the desktop,
+  then push as usual.
+
+Reason not to rely on this as your primary flow: it requires both machines on at once and
+a network path between them. It complements, not replaces, git sync.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| "start pull failed" logged | resolve rebase conflict (see above), then continue |
+| "stash pop conflicted" | run `git stash pop` manually and resolve |
+| Idle snapshot not pushing | check `git status`; remote down? push later manually |
+| Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode |
+| New machine, no projects yet | run `scripts/new-project.sh` or `gh repo clone <name>` |
