@@ -26,11 +26,15 @@ const HOST = hostname().split(".")[0]
 const IDLE_DEBOUNCE_MS = 120_000
 const START_DEBOUNCE_MS = 60_000
 
-let lastIdleSync = 0
-let lastStartSync = 0
-
 export const SessionSync = async (ctx) => {
   const worktree = ctx.worktree ?? ctx.directory
+
+  // Debounce state lives PER SESSION (per project), not module-global, so opening
+  // a second project right after the first doesn't suppress its first sync.
+  let lastIdleSync = 0
+  let lastStartSync = 0
+  let idleWarned = false
+  let startWarned = false
 
   const log = async (level, message) => {
     const line = `[session-sync] ${message}`
@@ -107,8 +111,15 @@ export const SessionSync = async (ctx) => {
   const syncStart = async () => {
     try {
       const now = Date.now()
-      if (now - lastStartSync < START_DEBOUNCE_MS) return
+      if (now - lastStartSync < START_DEBOUNCE_MS) {
+        if (!startWarned) {
+          startWarned = true
+          await log("info", "skipping start sync (debounced: already synced recently this session)")
+        }
+        return
+      }
       lastStartSync = now
+      startWarned = false
 
       if (!(await isRepo())) return
       if (!(await isToolkitProject())) {
@@ -167,8 +178,15 @@ export const SessionSync = async (ctx) => {
   const syncIdle = async () => {
     try {
       const now = Date.now()
-      if (now - lastIdleSync < IDLE_DEBOUNCE_MS) return
+      if (now - lastIdleSync < IDLE_DEBOUNCE_MS) {
+        if (!idleWarned) {
+          idleWarned = true
+          await log("info", "skipping idle snapshot (debounced: already synced recently this session)")
+        }
+        return
+      }
       lastIdleSync = now
+      idleWarned = false
 
       if (!(await isRepo())) return
       if (!(await isToolkitProject())) {

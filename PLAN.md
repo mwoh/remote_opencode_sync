@@ -140,6 +140,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] `git init` + first commit of this toolkit repo
 - [x] Create the GitHub repo for the toolkit and push
 - [x] Adopt-existing mode + update.sh (v1.1.0) implemented and dry-run tested
-- [x] Released v1.0.0 / v1.1.0 / v1.2.0 / v1.3.0 (adopt-existing, update.sh, uninstall.sh, plugin project-gating) with installer SHA pins
+- [x] Released v1.0.0 / v1.1.0 / v1.2.0 / v1.3.0 / v1.3.1 (adopt-existing, update.sh, uninstall.sh, plugin project-gating, per-session debounce) with installer SHA pins
 - [ ] Run `scripts/setup-machine.sh` (or checklist) on each machine
 - [ ] `scripts/new-project.sh` a real project and verify cross-machine resume

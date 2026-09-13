@@ -56,7 +56,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.3.0/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.3.1/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
