@@ -60,7 +60,9 @@ scripts/setup-machine.sh      # lazy version
 # or read docs/machine-setup.md and do it by hand
 ```
 
-Installs tools, `gh auth login`, SSH key, and the global session-sync plugin.
+Installs tools, `gh auth login`, SSH key, a global git identity from your GitHub profile,
+the sync plugin, and an uninstall manifest (used by `scripts/uninstall.sh` to remove it
+all later).
 
 ## New/unseen machine — Stage 2 (once per project)
 
@@ -155,5 +157,6 @@ a network path between them. It complements, not replaces, git sync.
 | "start pull failed" logged | resolve rebase conflict (see above), then continue |
 | "stash pop conflicted" | run `git stash pop` manually and resolve |
 | Idle snapshot not pushing | check `git status`; remote down? push later manually |
+| Remove the toolkit | `~/.local/share/remote_opencode_sync/scripts/uninstall.sh` + answer the questionnaire |
 | Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode — if it was never installed, this machine skipped `setup-machine.sh` |
 | New machine, no projects yet | run `scripts/new-project.sh` or `gh repo clone <name>` |

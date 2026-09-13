@@ -34,9 +34,10 @@ curl -fsSL https://raw.githubusercontent.com/mwoh/remote_opencode_sync/main/scri
 ```
 
 It installs prerequisites (git, gh, node, opencode), authenticates GitHub, sets up an SSH
-key, and installs the global session-sync plugin — everything required before you `gh repo
-clone` and `opencode` into a project. If opencode is already running on this machine,
-restart it to load the plugin.
+key and a git identity, and installs the global session-sync plugin — everything required
+before you `gh repo clone` and `opencode` into a project. It also writes an uninstall
+manifest so `scripts/uninstall.sh` can undo everything later. If opencode is already running
+on this machine, restart it to load the plugin.
 
 **Updates:** re-run the same command, or from an installed copy run:
 
@@ -51,7 +52,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.1.0/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.2.0/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -60,12 +61,15 @@ bash bootstrap.sh
 
 ```
 PLAN.md                     the plan / architecture
-templates/                  per-project files seeded by new-project.sh
+LICENSE                     MIT
+templates/                  per-project files created/used by new-project.sh
   AGENTS.md.tpl             base prompt / workflow rules (Layer 1)
   CONTINUE.md.tpl           handoff log with LAST SESSION block
   opencode.jsonc.tpl        /resume, /handoff, /sync commands
   .gitignore.tpl            deps, builds, secrets excluded
   .env.example.tpl          secrets reference (real .env is gitignored)
+  workflow-rules.md.tpl     rules-only block appended to an existing AGENTS.md on adopt
+  .gitignore.append.tpl     ignore patterns appended to an existing .gitignore on adopt
 plugins/
   session-sync.js           global zero-touch sync plugin (Layer 2)
 scripts/
@@ -73,7 +77,8 @@ scripts/
   update.sh                 update an already-installed toolkit
   new-project.sh            create or adopt a project (see below)
   setup-machine.sh          lazy one-time machine setup
-  lib.sh                    shared helpers (placeholders, package install)
+  uninstall.sh              remove what setup created (see below)
+  lib.sh                    shared helpers (placeholder relink, package install/remove, manifest)
 docs/
   machine-setup.md          new-machine checklist (the first step)
   daily-workflow.md         everyday playbook + advanced options
@@ -84,16 +89,21 @@ docs/
 - **`plugins/session-sync.js`** — the zero-touch sync layer (Layer 2): auto-pull/rebase on
   session start, `wip:` snapshot on idle, CONTINUE.md + session log into context
   compaction. Installed once per machine — this is what makes sync automatic.
-- **`templates/`** — what gets seeded into every project (Layer 1): the `AGENTS.md` rules,
-  `CONTINUE.md` handoff log, `opencode.jsonc` fallback commands, `.gitignore`,
-  `.env.example`. These travel *inside* the project repo.
+- **`templates/`** — what gets seeded into (or appended to) every project (Layer 1): the
+  `AGENTS.md` rules, `CONTINUE.md` handoff log, `opencode.jsonc` fallback commands,
+  `.gitignore`, `.env.example` — plus `workflow-rules.md.tpl` and `.gitignore.append.tpl`,
+  rules/ignore blocks appended when adopting an existing project. These travel *inside* the
+  project repo.
 - **`bootstrap.sh`** — the `curl | bash` entry point: clone the toolkit + run setup.
 - **`setup-machine.sh`** — per-machine setup: tools, `gh auth`, SSH key, git identity,
   plugin install. Idempotent, safe to re-run.
+- **`uninstall.sh`** — reverse of setup: removes only what the install created (per the
+  uninstall manifest), with a per-category/per-tool questionnaire and `--dry-run`.
 - **`update.sh`** — refresh an installed toolkit: pull latest + re-run setup.
 - **`new-project.sh`** — per-project, once: create (or adopt) the repo, seed the
   templates, first commit + push.
-- **`lib.sh`** — internal helpers; you never call it directly.
+- **`lib.sh`** — internal helpers (placeholder relink, package install/remove, uninstall
+  manifest); you never call it directly.
 
 In one line: **setup scripts are once per machine**, **`new-project.sh` is once per
 project**, and **the plugin is zero daily**.

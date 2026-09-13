@@ -72,11 +72,15 @@ ls ~/.config/opencode/plugins/
   install deps → `opencode`.
 - Create a new project from anywhere: `scripts/new-project.sh <name>` (run from the toolkit
   root).
+- Later, remove the toolkit: `scripts/uninstall.sh` (run from the toolkit root). It only
+  removes what setup created — your projects are never touched.
 
 ## What setup-machine.sh automates
 
 Prerequisite install (via the detected package manager), `gh auth login`, SSH key
-generate + register, and plugin install. Its mains caveats:
+generate + register, a global git identity read from your GitHub profile, plugin install,
+and an uninstall manifest written to `~/.local/state/remote_opencode_sync/uninstall.conf`
+(used by `scripts/uninstall.sh`). Its main caveats:
 
 - Package installs may ask for sudo / your distro's password.
 - It only tries common package managers (`apt-get`, `brew`, `dnf`, `pacman`).
