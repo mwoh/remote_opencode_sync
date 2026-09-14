@@ -298,7 +298,9 @@ removes the `roe` symlink and the PATH line setup added, so uninstall is a full 
 
 - **Default (and `--yes`):** removes the toolkit clone, the session-sync plugin,
   and any git identity *setup configured* — and keeps your tool packages, `gh`
-  login, and SSH key (all safe to have around).
+  login, and SSH key (all safe to have around). The clone deletion is double-guarded:
+  the path must look like a toolkit clone and live under `$HOME`, so a mis-pointed
+  manifest can never take out an unrelated directory.
 - A short questionnaire (or `--no-tools`, `--no-auth`, `--no-ssh-key`,
   `--no-identity`, `--no-plugin`, `--no-clone`) opts in/out of each category.
   Tool packages are offered **per tool** and only if setup itself installed them —

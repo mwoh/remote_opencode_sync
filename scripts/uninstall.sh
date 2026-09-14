@@ -300,9 +300,13 @@ if [[ "${ROE_PATH_EXPORTED:-no}" == "yes" ]]; then
   fi
 fi
 
-# 8. the toolkit clone (guarded: only if it looks like a toolkit clone)
+# 8. the toolkit clone (guarded: only if it looks like a toolkit clone AND lives
+#    under $HOME — the installer only ever puts it at ~/.local/share/…, so anything
+#    else is almost certainly a mispointed manifest and must never be rm -rf'd)
 if [[ "$DO_CLONE" -eq 1 && -d "$INSTALL_DIR" ]]; then
-  if [[ -f "$INSTALL_DIR/scripts/lib.sh" && -f "$INSTALL_DIR/plugins/session-sync.js" ]]; then
+  if [[ "$INSTALL_DIR" != "$HOME"/* ]]; then
+    warn "refusing to delete $INSTALL_DIR — outside \$HOME (a manifest mix-up? remove it manually if intended)"
+  elif [[ -f "$INSTALL_DIR/scripts/lib.sh" && -f "$INSTALL_DIR/plugins/session-sync.js" ]]; then
     say rm -rf "$INSTALL_DIR"
     ok "removed toolkit clone"
   else
