@@ -8,7 +8,8 @@
 #   3. Generates an SSH key and registers it with GitHub
 #   4. Sets a global git identity (from the GitHub profile, if missing)
 #   5. Installs the global session-sync plugin
-#   6. Writes an uninstall manifest (~/.local/state/remote_opencode_sync/uninstall.conf)
+#   6. Installs the 'roe' command (symlink in ~/.local/bin + PATH entry for it)
+#   7. Writes an uninstall manifest (~/.local/state/remote_opencode_sync/uninstall.conf)
 #      recording exactly what THIS install created, so scripts/uninstall.sh can
 #      remove it later without touching anything you already had.
 #
@@ -153,6 +154,39 @@ else
   cp "$PLUGIN_SRC" "$PLUGIN_DST"
   ok "installed $PLUGIN_SRC → $PLUGIN_DST"
   mf_installed "PLUGIN_INSTALLED" "yes"
+fi
+
+banner "roe command"
+mkdir -p "$HOME/.local/bin"
+ROE_LINK="$HOME/.local/bin/roe"
+ROE_TARGET="$ROOT_DIR/bin/roe"
+if [[ -f "$ROE_TARGET" ]]; then
+  ln -sfn "$ROE_TARGET" "$ROE_LINK"
+  ok "$ROE_LINK -> $ROE_TARGET"
+  mf_set "ROE_LINKED" "yes"
+else
+  warn "$ROE_TARGET missing — 'roe' not linked"
+  mf_set "ROE_LINKED" "no"
+fi
+
+BASH_RC="$HOME/.bashrc"
+PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+if [[ -f "$BASH_RC" ]] && grep -qF "$PATH_LINE" "$BASH_RC"; then
+  if grep -q "^ROE_PATH_EXPORTED=yes$" "$MANIFEST"; then
+    ok "$BASH_RC still has the PATH line setup added"
+    mf_keep "ROE_PATH_EXPORTED" "yes"
+  else
+    ok "$BASH_RC already has \$HOME/.local/bin on PATH (pre-existing — untouched)"
+    mf_set "ROE_PATH_EXPORTED" "no"
+  fi
+elif [[ -f "$BASH_RC" ]]; then
+  printf '\n# added by remote_opencode_sync setup (roe command)\n%s\n' "$PATH_LINE" >> "$BASH_RC"
+  ok "added \$HOME/.local/bin to PATH in $BASH_RC"
+  mf_set "ROE_PATH_EXPORTED" "yes"
+  echo "  → run 'roe' from a new shell (or: source $BASH_RC)"
+else
+  warn "$BASH_RC not found — prepend $HOME/.local/bin to PATH yourself to use 'roe'"
+  mf_set "ROE_PATH_EXPORTED" "no"
 fi
 
 banner "Verify"

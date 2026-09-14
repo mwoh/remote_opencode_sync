@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# roe — the remote_opencode_sync command front-end.
+# One short command for every toolkit script, so you never have to remember the
+# paths under ~/.local/share/remote_opencode_sync/scripts/... again.
+#
+#   roe help | version | update | setup | new | adopt | uninstall
+#
+# roe is installed as a symlink in ~/.local/bin pointing at this file. Because it
+# resolves itself via readlink -f, it always runs the toolkit it came from (even
+# across the symlink), and the scripts it dispatches stay current through `roe
+# update`.
+
+set -u
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT="$(dirname "$(dirname "$SELF")")"
+SCRIPTS="$ROOT/scripts"
+
+SC_UPDATE="$SCRIPTS/update.sh"
+SC_SETUP="$SCRIPTS/setup-machine.sh"
+SC_UNINSTALL="$SCRIPTS/uninstall.sh"
+SC_NEW="$SCRIPTS/new-project.sh"
+
+usage() {
+  cat <<EOF
+roe — the remote_opencode_sync command front-end (toolkit at $ROOT)
+
+Usage: roe <command> [args...]
+
+Commands:
+  help                 show this help
+  version              show the installed toolkit version
+  update               update the toolkit to the latest release
+  setup | machine      one-time machine setup (prereqs, gh auth, ssh key, identity)
+  new <name> [--setup] create & push a new project, then opencode into it
+  adopt <dir> [args]   turn an existing local project into a synced project
+  uninstall [opts]     reverse the install (also removes the roe symlink + PATH line)
+
+Run 'roe <command> --help' for script-specific options.
+Aliases: create = new
+EOF
+}
+
+require() {
+  if [[ -x "$1" ]]; then return 0; fi
+  echo "roe: $1 is missing — this does not look like a valid toolkit install." >&2
+  echo "     Reinstall with:" >&2
+  echo "       curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/main/scripts/bootstrap.sh" >&2
+  echo "       && bash bootstrap.sh" >&2
+  return 1
+}
+
+main() {
+  local cmd="${1:-}"
+  if [[ -z "$cmd" || "$cmd" == "-h" || "$cmd" == "--help" || "$cmd" == "help" ]]; then
+    usage
+    return 2
+  fi
+  shift
+
+  case "$cmd" in
+    version)
+      local v
+      v="$(git -C "$ROOT" describe --tags 2>/dev/null)"
+      [[ -n "$v" ]] || v="$(git -C "$ROOT" log -1 --format=%h 2>/dev/null || echo unknown)"
+      echo "remote_opencode_sync $v"
+      ;;
+    update)      require "$SC_UPDATE"  && exec "$SC_UPDATE" "$@" ;;
+    setup|machine) require "$SC_SETUP" && exec "$SC_SETUP" "$@" ;;
+    uninstall)   require "$SC_UNINSTALL" && exec "$SC_UNINSTALL" "$@" ;;
+    new|create)  require "$SC_NEW"     && exec "$SC_NEW" "$@" ;;
+    adopt)       require "$SC_NEW"     && exec "$SC_NEW" --existing "$@" ;;
+    *) echo "roe: unknown command: $cmd" >&2; usage >&2; return 2 ;;
+  esac
+}
+
+main "$@"

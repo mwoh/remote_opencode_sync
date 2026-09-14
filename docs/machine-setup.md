@@ -74,23 +74,29 @@ gh repo clone <you>/remote_opencode_sync
 ```
 git --version && gh --version && node --version && opencode --version
 ls ~/.config/opencode/plugins/
+roe version
 ```
+
+(If `roe` isn't found yet, it's because `~/.local/bin` wasn't on your `PATH` before — setup
+added the line to `~/.bashrc`; open a new shell or `source ~/.bashrc`.)
 
 ## 7. Next steps
 
 - Bring a project onto this machine: `gh repo clone <project>` → `cd <project>` →
   install deps → `opencode`.
-- Create a new project from anywhere: `scripts/new-project.sh <name>` (run from the toolkit
-  root).
-- Later, remove the toolkit: `scripts/uninstall.sh` (run from the toolkit root). It only
-  removes what setup created — your projects are never touched.
+- Create a new project from anywhere: `roe new <name>` (alias for
+  `scripts/new-project.sh <name>`).
+- Update the toolkit later: `roe update`. Remove it: `roe uninstall` — it also removes the
+  `roe` symlink and the PATH line setup added.
 
 ## What setup-machine.sh automates
 
 Prerequisite install (via the detected package manager), `gh auth login`, SSH key
 generate + register, a global git identity read from your GitHub profile, plugin install,
-and an uninstall manifest written to `~/.local/state/remote_opencode_sync/uninstall.conf`
-(used by `scripts/uninstall.sh`). Its main caveats:
+the `roe` command (a symlink to `bin/roe` in `~/.local/bin`, plus a `~/.bashrc` PATH entry
+if `~/.local/bin` wasn't already there), and an uninstall manifest written to
+`~/.local/state/remote_opencode_sync/uninstall.conf` (used by `scripts/uninstall.sh`). Its
+main caveats:
 
 - Package installs may ask for sudo / your distro's password.
 - It only tries common package managers (`apt-get`, `brew`, `dnf`, `pacman`).

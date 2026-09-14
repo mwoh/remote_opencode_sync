@@ -46,8 +46,10 @@ on this machine, restart it to load the plugin.
 **Updates:** re-run the same command, or from an installed copy run:
 
 ```
-~/.local/share/remote_opencode_sync/scripts/update.sh
+roe update
 ```
+
+(`scripts/update.sh` works too — `roe` is just a shortcut front-end; more below.)
 
 Both pull the latest toolkit and re-run setup (idempotent). Restart opencode after an update
 to load a refreshed plugin.
@@ -56,10 +58,31 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.3.1/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.4.0/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
+
+## The `roe` command
+
+After setup, all the scripts have one front-end named **`roe`** — a symlink in
+`~/.local/bin` that always runs the *current* toolkit, from any directory. You never
+need to remember the paths under `~/.local/share/remote_opencode_sync/scripts/` again.
+
+| Purpose | `roe` command | Under the hood |
+| --- | --- | --- |
+| Update the toolkit | `roe update` | `scripts/update.sh` |
+| One-time machine setup | `roe setup` | `scripts/setup-machine.sh` |
+| Create a new project | `roe new <name>` | `scripts/new-project.sh <name>` |
+| Adopt an existing folder | `roe adopt <dir>` | `scripts/new-project.sh --existing <dir>` |
+| Uninstall | `roe uninstall` | `scripts/uninstall.sh` |
+| Version info | `roe version` | — |
+| Help | `roe help` | — |
+
+Everything after the command is passed through unchanged (`roe adopt ./x --resolve ask`,
+`roe new foo --setup`, `roe uninstall --dry-run`). `create` is an alias for `new`; unknown
+commands exit with `2`. Restart your shell (or `source ~/.bashrc`) if `roe` isn't found
+yet — setup adds `~/.local/bin` to `PATH` if it was missing.
 
 ## Layout
 
@@ -76,6 +99,8 @@ templates/                  per-project files created/used by new-project.sh
   .gitignore.append.tpl     ignore patterns appended to an existing .gitignore on adopt
 plugins/
   session-sync.js           global zero-touch sync plugin (Layer 2)
+bin/
+  roe                       'roe' command front-end (symlinked into ~/.local/bin)
 scripts/
   bootstrap.sh              one-liner install/update entry point
   update.sh                 update an already-installed toolkit
@@ -107,6 +132,10 @@ docs/
 - **`uninstall.sh`** — reverse of setup: removes only what the install created (per the
   uninstall manifest), with a per-category/per-tool questionnaire and `--dry-run`.
 - **`update.sh`** — refresh an installed toolkit: pull latest + re-run setup.
+- **`bin/roe`** — the `roe` command front-end (see above): a symlink target in the toolkit
+  that dispatches every `scripts/…` tool; setup links it into `~/.local/bin` and records
+  the link + PATH line in the manifest so uninstall removes exactly those. Since it
+  resolves through the symlink (`readlink -f`), it always runs the toolkit it came from.
 - **`new-project.sh`** — per-project, once: create (or adopt) the repo, seed the
   templates + the `.opencode/toolkit` marker (this is what tells the plugin a project uses
   the toolkit), first commit + push.
@@ -120,7 +149,8 @@ project**, and **the plugin is zero daily**.
 
 > **Path note:** all `scripts/…` commands below assume you're inside the toolkit clone.
 > After the one-liner that's `~/.local/share/remote_opencode_sync` — already cloned for
-> you.
+> you. Once setup linked the `roe` front-end into `~/.local/bin`, the same scripts run
+> from any directory as `roe <command>` (see *The `roe` command* above).
 
 There are three ways to get a machine ready, depending on what you're doing:
 
@@ -164,8 +194,10 @@ gh repo clone @@GITHUB_USER@@/remote_opencode_sync
 From any machine:
 
 ```
-scripts/new-project.sh <repo-name>
+roe new <repo-name>
 ```
+
+(same as `scripts/new-project.sh <repo-name>` — either works; `roe` is just the shortcut)
 
 This checks `git`/`gh`/auth (fails fast with guidance, or `--setup` hands off to
 `setup-machine.sh`), creates a **private** GitHub repo, seeds the templates, and makes the
@@ -183,8 +215,10 @@ from an empty repo: `--existing` creates a new **private** GitHub repo for the f
 pushes your existing history into it.
 
 ```
-scripts/new-project.sh --existing <dir>
+roe adopt <dir>
 ```
+
+(same as `scripts/new-project.sh --existing <dir>` — either works.)
 
 - Default repo name = basename of the directory (override with `--name <repo>`).
 - Existing git history (if any) is **preserved**; if the dir isn't a repo it's initialized.
@@ -256,8 +290,11 @@ Everything the install creates is tracked in a manifest
 removes **only what it created**:
 
 ```
-~/.local/share/remote_opencode_sync/scripts/uninstall.sh
+roe uninstall
 ```
+
+(same as `~/.local/share/remote_opencode_sync/scripts/uninstall.sh` — either works.) It also
+removes the `roe` symlink and the PATH line setup added, so uninstall is a full reverse.
 
 - **Default (and `--yes`):** removes the toolkit clone, the session-sync plugin,
   and any git identity *setup configured* — and keeps your tool packages, `gh`

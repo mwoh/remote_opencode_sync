@@ -13,11 +13,12 @@ the practical playbook.
 
 ## New project (from any machine)
 
-Run from your toolkit clone (`~/.local/share/remote_opencode_sync`):
+```
+roe new <name>
+```
 
-```
-scripts/new-project.sh <name>
-```
+That's `scripts/new-project.sh <name>` under the hood (`roe` runs it from anywhere; the
+script spelling works from the toolkit root too).
 
 Pre-flight checks `git`, `gh`, and auth, then creates a **private** GitHub repo, clones
 it, seeds `AGENTS.md`, `CONTINUE.md`, `opencode.jsonc`, `.gitignore`, `.env.example`,
@@ -31,7 +32,7 @@ opencode
 ## Adopt an existing project (already-started folder)
 
 ```
-scripts/new-project.sh --existing <dir> [--name <repo>] [--resolve append|ask|skip|overwrite] [--no-scan] [--force]
+roe adopt <dir> [--name <repo>] [--resolve append|ask|skip|overwrite] [--no-scan] [--force]
 ```
 
 - Preserves existing git history; initializes if the dir isn't a repo; won't repoint an
@@ -48,7 +49,7 @@ scripts/new-project.sh --existing <dir> [--name <repo>] [--resolve append|ask|sk
 Once installed, either re-run the bootstrap curl command or:
 
 ```
-~/.local/share/remote_opencode_sync/scripts/update.sh
+roe update
 ```
 
 Pull + setup + placeholder re-link. Restart opencode afterward to load a refreshed plugin.
@@ -56,13 +57,13 @@ Pull + setup + placeholder re-link. Restart opencode afterward to load a refresh
 ## New/unseen machine — Stage 1 (once per machine)
 
 ```
-scripts/setup-machine.sh      # lazy version
+roe setup      # = scripts/setup-machine.sh (lazy version)
 # or read docs/machine-setup.md and do it by hand
 ```
 
 Installs tools, `gh auth login`, SSH key, a global git identity from your GitHub profile,
-the sync plugin, and an uninstall manifest (used by `scripts/uninstall.sh` to remove it
-all later).
+the sync plugin, the `roe` command (`~/.local/bin` symlink + PATH entry), and an uninstall
+manifest (used by `roe uninstall` / `scripts/uninstall.sh` to remove it all later).
 
 The plugin is loaded in every opencode session on the machine, but **only acts in projects
 carrying the `.opencode/toolkit` marker** that `new-project.sh` seeds — other projects are
@@ -162,8 +163,8 @@ a network path between them. It complements, not replaces, git sync.
 | "start pull failed" logged | resolve rebase conflict (see above), then continue |
 | "stash pop conflicted" | run `git stash pop` manually and resolve |
 | Idle snapshot not pushing | check `git status`; remote down? push later manually |
-| Plugin not syncing a project | project lacks the `.opencode/toolkit` marker — run `scripts/new-project.sh --existing . --resolve append` to adopt it |
+| Plugin not syncing a project | project lacks the `.opencode/toolkit` marker — run `roe adopt . --resolve append` to adopt it |
 | Permanently stop auto-sync on one copy | `touch .opencode/state/no-session-sync` (local, gitignored) — or `rm .opencode/toolkit` to mark the repo non-toolkit |
-| Remove the toolkit | `~/.local/share/remote_opencode_sync/scripts/uninstall.sh` + answer the questionnaire |
-| Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode — if it was never installed, this machine skipped `setup-machine.sh` |
-| New machine, no projects yet | run `scripts/new-project.sh` or `gh repo clone <name>` |
+| Remove the toolkit | `roe uninstall` (or `~/.local/share/remote_opencode_sync/scripts/uninstall.sh`) + answer the questionnaire |
+| Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode — if it was never installed, this machine skipped `roe setup` |
+| New machine, no projects yet | run `roe new <name>` or `gh repo clone <name>` |

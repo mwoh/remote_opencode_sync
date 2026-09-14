@@ -5,7 +5,8 @@
 #
 # Removes only what the install created, as recorded in the manifest written by
 # setup-machine.sh (~/.local/state/remote_opencode_sync/uninstall.conf):
-#   - the toolkit clone and the global session-sync plugin  (always, confirmed)
+#   - the toolkit clone, the global session-sync plugin, and the 'roe' symlink
+#     (+ the PATH line setup added)  (always, confirmed)
 #   - the global git identity setup configured              (always, value-checked)
 #   - optionally, per-tool, only packages that setup itself installed
 #   - optionally, the gh login setup created
@@ -173,6 +174,8 @@ echo
 echo "== Summary =="
 [[ "$DO_CLONE" -eq 1 ]]    && echo "  · toolkit clone:  $INSTALL_DIR"
 [[ "$DO_PLUGIN" -eq 1 ]]   && echo "  · plugin:         $PLUGIN_PATH"
+[[ "${ROE_LINKED:-no}" == "yes" ]]              && echo "  · roe symlink:    $HOME/.local/bin/roe"
+[[ "${ROE_PATH_EXPORTED:-no}" == "yes" ]]       && echo "  · PATH line:      added by setup to ~/.bashrc"
 [[ "$DO_IDENTITY" -eq 1 ]] && echo "  · git identity:   unset (values match what setup set)"
 [[ "$R_OPENCODE" -eq 1 ]]  && echo "  · opencode:       uninstall (recorded method: ${OPENCODE_METHOD:-script})"
 [[ "$R_GH" -eq 1 ]]        && echo "  · gh:             remove package"
@@ -282,7 +285,22 @@ remove_pkg() {
 [[ "$R_GIT" -eq 1 ]]  && [[ "${TOOL_GIT_INSTALLED:-no}" == "yes" ]] && remove_pkg git
 [[ "$R_NODE" -eq 1 ]] && [[ "${TOOL_NODE_INSTALLED:-no}" == "yes" ]] && remove_pkg node
 
-# 7. the toolkit clone (guarded: only if it looks like a toolkit clone)
+# 7. the 'roe' command front-end — the symlink + the PATH line setup added
+if [[ "${ROE_LINKED:-no}" == "yes" && -e "$HOME/.local/bin/roe" ]]; then
+  say rm -f "$HOME/.local/bin/roe"
+  ok "removed ~/.local/bin/roe symlink"
+fi
+if [[ "${ROE_PATH_EXPORTED:-no}" == "yes" ]]; then
+  rc="$HOME/.bashrc"
+  if [[ -f "$rc" ]]; then
+    say sed -i '|^export PATH="\$HOME/.local/bin:\$PATH"$|d' "$rc"
+    ok "removed the PATH line setup added to $rc"
+  else
+    warn "$rc not found — remove the PATH line manually if it is still there"
+  fi
+fi
+
+# 8. the toolkit clone (guarded: only if it looks like a toolkit clone)
 if [[ "$DO_CLONE" -eq 1 && -d "$INSTALL_DIR" ]]; then
   if [[ -f "$INSTALL_DIR/scripts/lib.sh" && -f "$INSTALL_DIR/plugins/session-sync.js" ]]; then
     say rm -rf "$INSTALL_DIR"
@@ -292,7 +310,7 @@ if [[ "$DO_CLONE" -eq 1 && -d "$INSTALL_DIR" ]]; then
   fi
 fi
 
-# 8. the manifest — last, so reruns/aborts keep state
+# 9. the manifest — last, so reruns/aborts keep state
 if [[ "$HAS_MANIFEST" -eq 1 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  ~ (dry run) rm -f $MANIFEST"

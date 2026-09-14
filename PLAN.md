@@ -71,6 +71,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `templates/.env.example.tpl` | Reference for secret env vars (real `.env` is gitignored) |
 | `plugins/session-sync.js` | Global zero-touch sync plugin (Layer 2); acts only in projects carrying the `.opencode/toolkit` marker (opt-out: `.opencode/state/no-session-sync`) |
 | `scripts/bootstrap.sh` | One-liner install / update entry point (curl pipe) |
+| `bin/roe` | The `roe` command front-end: a single short command dispatching every script (`update`/`setup`/`new`/`adopt`/`uninstall`/`version`); symlinked into `~/.local/bin` by setup, resolved via `readlink -f` so it follows updates |
 | `scripts/update.sh` | Update an already-installed toolkit |
 | `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`) |
 | `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key); writes the uninstall manifest used by `scripts/uninstall.sh` |
@@ -97,13 +98,14 @@ default), drops a FIRST STEP for the first session's scan-and-orient pass, commi
 pushes.
 
 ### Project updates (run from any machine)
-`~/.local/share/remote_opencode_sync/scripts/update.sh` (or re-run the bootstrap curl) —
-pull toolkit, re-run setup (idempotent), re-link placeholders, restart opencode.
+`roe update` (or re-run the bootstrap curl, or
+`~/.local/share/remote_opencode_sync/scripts/update.sh`) — pull toolkit, re-run setup
+(idempotent), re-link placeholders, restart opencode.
 
 ### New/unseen machine
 - **Stage 1 (once per machine):** `docs/machine-setup.md` or the lazy
-  `scripts/setup-machine.sh` — install tools, `gh auth`, SSH key, install the sync
-  plugin globally.
+  `roe setup` (`scripts/setup-machine.sh`) — install tools, `gh auth`, SSH key, install
+  the sync plugin globally, and link the `roe` command.
 - **Stage 2 (once per project):** `gh repo clone <name>` → `cd <name>` → install deps
   (never synced; each machine installs its own) → `opencode`. Everything from here is
   automatic.
@@ -141,5 +143,5 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Create the GitHub repo for the toolkit and push
 - [x] Adopt-existing mode + update.sh (v1.1.0) implemented and dry-run tested
 - [x] Released v1.0.0 / v1.1.0 / v1.2.0 / v1.3.0 / v1.3.1 (adopt-existing, update.sh, uninstall.sh, plugin project-gating, per-session debounce) with installer SHA pins
-- [ ] Run `scripts/setup-machine.sh` (or checklist) on each machine
+- [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `scripts/new-project.sh` a real project and verify cross-machine resume

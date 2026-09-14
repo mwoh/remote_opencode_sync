@@ -68,6 +68,7 @@ relink_placeholders "$INSTALL_DIR"
 
 echo
 echo "Done. Toolkit at: $INSTALL_DIR"
-echo "  New project?  $INSTALL_DIR/scripts/new-project.sh <repo-name>"
-echo "  Update later? re-run this same script (pull + idempotent setup)"
-echo "  Uninstall?    $INSTALL_DIR/scripts/uninstall.sh"
+echo "  New project?   roe new <repo-name>"
+echo "  Adopt a folder? roe adopt <dir>"
+echo "  Update later?  roe update (or re-run this same script)"
+echo "  Uninstall?     roe uninstall"
