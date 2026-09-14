@@ -279,6 +279,14 @@ Defined per-project in `opencode.jsonc`:
 
 You should never *need* them; they're for explicit control and edge cases.
 
+> **Migrating a project seeded by an older toolkit?** Older seeds used the
+> `"prompt"` key for these commands, which the current opencode schema no longer
+> accepts (it requires `"template"`). Fix an older project's config with:
+> ```
+> sed -i 's/"prompt":/"template":/g' opencode.jsonc
+> ```
+> then commit + push. New projects are unaffected (the template already uses `"template"`).
+
 ## Pinned model
 
 Every project's `opencode.jsonc` carries a `model` key. Because the config travels inside
