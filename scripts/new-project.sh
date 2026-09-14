@@ -5,14 +5,19 @@
 #   new-project.sh <repo-name> [--setup]          create from scratch (empty repo)
 #   new-project.sh --existing <dir> [options]     turn an existing directory into a repo
 #
-# Options (--existing mode):
+# Options:
+#   --model <id>      opencode model id to pin in the project's opencode.jsonc, so
+#                     every machine runs the same model (default: $MODEL_PIN, else
+#                     the model from your global opencode config, else a prompt).
+#                     When adopting, an existing model in the config is respected.
+#   --setup            if prerequisites are missing, run setup-machine.sh automatically
+#   --existing <dir>   adopt an existing directory (must precede other options)
 #   --name <repo>      GitHub repo name (default: basename of the directory)
 #   --scan | --no-scan orient the first session: scan the codebase and fill the
 #                      AGENTS.md Project overview / CONTINUE.md Status. Default: --scan.
 #   --resolve <mode>   how to handle files that already exist (AGENTS.md, .gitignore, etc.):
 #                      append (default) | ask | skip | overwrite
 #   --force            allow replacing an existing git origin with the new repo's remote
-#   --setup            if prerequisites are missing, run setup-machine.sh automatically
 #
 # Pre-flight CHECKS prerequisites but does not install them; fails fast with guidance.
 # Never overwrites existing user files without asking (see --resolve).
@@ -29,8 +34,8 @@ MARKER="remote_opencode_sync"
 
 usage() {
   echo "usage:" >&2
-  echo "  new-project.sh <repo-name> [--setup]" >&2
-  echo "  new-project.sh --existing <dir> [--name <repo>] [--scan|--no-scan] [--resolve append|ask|skip|overwrite] [--force] [--setup]" >&2
+  echo "  new-project.sh <repo-name> [--setup] [--model <id>]" >&2
+  echo "  new-project.sh --existing <dir> [--name <repo>] [--scan|--no-scan] [--resolve append|ask|skip|overwrite] [--force] [--setup] [--model <id>]" >&2
 }
 
 # ---- arg parsing ----
@@ -41,11 +46,13 @@ RESOLVE="append"
 SCAN=1
 FORCE=0
 RUN_SETUP=0
+MODEL_FLAG=""
 
 while (($#)); do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --setup) RUN_SETUP=1; shift ;;
+    --model) shift; [[ $# -gt 0 ]] || { echo "error: --model needs a value" >&2; exit 1; }; MODEL_FLAG="$1"; shift ;;
     --existing) MODE="existing"; shift; [[ $# -gt 0 ]] || { echo "error: --existing needs a directory" >&2; exit 1; }; EXISTING_DIR="$1"; shift ;;
     --name) shift; [[ $# -gt 0 ]] || { echo "error: --name needs a value" >&2; exit 1; }; NAME="$1"; shift ;;
     --scan) SCAN=1; shift ;;
@@ -76,7 +83,7 @@ if [[ "$PREREQ_FAIL" -ne 0 ]]; then
   echo >&2
   echo "Some prerequisites are missing." >&2
   echo "  Checklist / guidance:  $ROOT_DIR/docs/machine-setup.md" >&2
-  echo "  Lazy automated setup:  $ROOT_DIR/scripts/setup-machine.sh" >&2
+  echo "  Lazy automated setup:  roe setup ($ROOT_DIR/scripts/setup-machine.sh)" >&2
   if [[ "$RUN_SETUP" -eq 1 ]]; then
     echo "Running automated setup now..." >&2
     "$ROOT_DIR/scripts/setup-machine.sh"
@@ -147,10 +154,20 @@ if gh repo view "$NAME" >/dev/null 2>&1; then
   exit 1
 fi
 
+# ---- resolve which model to pin in the project config ----
+MODEL="$(model_resolve "$MODEL_FLAG" || true)"
+
 # ---- seeding helpers + conflict resolution ----
 subst() {
   local file="$1"
   sed "s/{{PROJECT_NAME}}/$NAME/g" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+  if grep -qF "@@MODEL@@" "$file"; then
+    if [[ -n "$MODEL" ]]; then
+      sed "s|@@MODEL@@|$MODEL|g" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+    else
+      grep -vF "@@MODEL@@" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+    fi
+  fi
 }
 
 TO_DO=()
@@ -284,6 +301,19 @@ mkdir -p session-logs
 mkdir -p .opencode
 printf 'remote_opencode_sync\n' > .opencode/toolkit
 
+# ---- model pin (adopt mode): respect an existing model, else pin the resolved one ----
+if [[ "$MODE" == "existing" ]]; then
+  existing_model="$(model_get "$PROJECT_DIR" || true)"
+  if [[ -n "$existing_model" ]]; then
+    echo "  kept existing config model: $existing_model"
+  elif [[ "$RESOLVE" == "skip" ]]; then
+    echo "  (existing config not touched — --resolve skip; pin one later with: roe model <id>)"
+  elif [[ -n "$MODEL" ]]; then
+    pin_file="$(model_set "$PROJECT_DIR" "$MODEL")"
+    echo "  pinned model $MODEL in $(basename "$pin_file")"
+  fi
+fi
+
 # ---- FIRST STEP orientation (existing-dir mode only) ----
 if [[ "$MODE" == "existing" && "$SCAN" -eq 1 && ! "$(grep -cF '## FIRST STEP' "CONTINUE.md" 2>/dev/null || true)" -gt 0 ]]; then
   printf '\n\n## FIRST STEP\n' >> "CONTINUE.md"
@@ -310,7 +340,7 @@ if ! git config user.email >/dev/null 2>&1 || ! git config user.name >/dev/null 
   echo "error: git user identity is not set." >&2
   echo "  run:  git config --global user.name \"Your Name\"" >&2
   echo "        git config --global user.email \"you@example.com\"" >&2
-  echo "  (or run scripts/setup-machine.sh, which sets it from your GitHub profile)" >&2
+  echo "  (or run roe setup / scripts/setup-machine.sh, which sets it from your GitHub profile)" >&2
   exit 1
 fi
 git add -A

@@ -3,6 +3,7 @@
   // The session-sync plugin (installed globally) does the automatic sync;
   // these commands are manual fallbacks for explicit control / edge cases.
   "$schema": "https://opencode.ai/config.json",
+  "model": "@@MODEL@@",
 
   "command": {
     "resume": {

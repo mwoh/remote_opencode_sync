@@ -1,9 +1,9 @@
-# remote_opencode_sync — Cross-Device OpenCode Workflow Toolkit
+# ROE - remote_opencode_sync — Cross-Device OpenCode Workflow Toolkit
 
 Work with [opencode](https://opencode.ai) on whichever machine fits the task — the light
 laptop for writing, planning, and docs; the desktop or heavy laptop for compiling and
 heavy lifting — and pick up exactly where you left off on the next machine, with **zero
-manual sync steps**.
+manual sync steps**. After setup, every toolkit action is one short command: **`roe`**.
 
 Git is the single source of truth for **both code and progress**. Each project carries
 its own handoff log (`CONTINUE.md`) and running session log (`session-logs/`), kept
@@ -58,7 +58,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.4.0/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.0/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -75,6 +75,7 @@ need to remember the paths under `~/.local/share/remote_opencode_sync/scripts/` 
 | One-time machine setup | `roe setup` | `scripts/setup-machine.sh` |
 | Create a new project | `roe new <name>` | `scripts/new-project.sh <name>` |
 | Adopt an existing folder | `roe adopt <dir>` | `scripts/new-project.sh --existing <dir>` |
+| Pin the model used here | `roe model [<id>]` | rewrites the project's `opencode.jsonc` |
 | Uninstall | `roe uninstall` | `scripts/uninstall.sh` |
 | Version info | `roe version` | — |
 | Help | `roe help` | — |
@@ -92,7 +93,7 @@ LICENSE                     MIT
 templates/                  per-project files created/used by new-project.sh
   AGENTS.md.tpl             base prompt / workflow rules (Layer 1)
   CONTINUE.md.tpl           handoff log with LAST SESSION block
-  opencode.jsonc.tpl        /resume, /handoff, /sync commands
+  opencode.jsonc.tpl        project config: /resume, /handoff, /sync + pinned model
   .gitignore.tpl            deps, builds, secrets excluded
   .env.example.tpl          secrets reference (real .env is gitignored)
   workflow-rules.md.tpl     rules-only block appended to an existing AGENTS.md on adopt
@@ -128,7 +129,8 @@ docs/
   project repo.
 - **`bootstrap.sh`** — the `curl | bash` entry point: clone the toolkit + run setup.
 - **`setup-machine.sh`** — per-machine setup: tools, `gh auth`, SSH key, git identity,
-  plugin install. Idempotent, safe to re-run.
+  plugin install. Also symlinks `roe` into `~/.local/bin` and adds that dir to `PATH` (if
+  missing), so the toolkit is one word from any directory. Idempotent, safe to re-run.
 - **`uninstall.sh`** — reverse of setup: removes only what the install created (per the
   uninstall manifest), with a per-category/per-tool questionnaire and `--dry-run`.
 - **`update.sh`** — refresh an installed toolkit: pull latest + re-run setup.
@@ -174,8 +176,10 @@ The one-liner does the steps below automatically; by hand they are:
 Read [docs/machine-setup.md](docs/machine-setup.md), or run:
 
 ```
-scripts/setup-machine.sh
+roe setup
 ```
+
+(same as `scripts/setup-machine.sh` — either works; `roe` is easier to find.)
 
 It installs prerequisites (git, gh, node, opencode), runs `gh auth login`, sets up an SSH
 key, a git identity (from your GitHub profile), and installs the global session-sync
@@ -201,7 +205,9 @@ roe new <repo-name>
 
 This checks `git`/`gh`/auth (fails fast with guidance, or `--setup` hands off to
 `setup-machine.sh`), creates a **private** GitHub repo, seeds the templates, and makes the
-first commit + push. Then:
+first commit + push. It also **pins the opencode model** in the project's `opencode.jsonc`
+(your global config's model by default, or `--model <id>`) so every machine runs the same
+one. Then:
 
 ```
 cd <repo-name>
@@ -231,6 +237,9 @@ roe adopt <dir>
 - `--scan` (default): writes a FIRST STEP telling the first opencode session to scan the
   codebase and fill in `AGENTS.md`'s Project overview + `CONTINUE.md`'s Status, then
   propose next steps. Pass `--no-scan` to have it ask you for the background instead.
+- The model: your default (global config / `$MODEL_PIN` / `--model <id>`) is pinned into
+  `opencode.jsonc` — unless the config already declares one, in which case that's kept and
+  reported.
 
 Requires a git identity (`git config user.name/email`) — `scripts/setup-machine.sh` sets
 it from your GitHub profile automatically.
@@ -255,9 +264,10 @@ opencode
 ```
 
 opencode auto-loads each project's `AGENTS.md` — there's no per-project config to set up.
-The plugin pulls and orients you from `CONTINUE.md`. Work, close the laptop, switch
-machines, and repeat. **No `/resume`, no `/handoff` needed** — those commands exist only
-as manual fallbacks.
+The model pinned in the project's `opencode.jsonc` travels with the repo, so every machine
+opens on the same model. The plugin pulls and orients you from `CONTINUE.md`. Work, close
+the laptop, switch machines, and repeat. **No `/resume`, no `/handoff` needed** — those
+commands exist only as manual fallbacks.
 
 ## Manual fallback commands
 
@@ -268,6 +278,22 @@ Defined per-project in `opencode.jsonc`:
 - `/sync` — commit + push any pending changes now.
 
 You should never *need* them; they're for explicit control and edge cases.
+
+## Pinned model
+
+Every project's `opencode.jsonc` carries a `model` key. Because the config travels inside
+the repo and opencode's project config overrides the global one, **all machines work with
+the same model** without touching each machine's global settings. It's set at creation from
+your global config (or `roe new <name> --model <id>`); when adopting, an existing model in
+the config is respected and kept. Change it any time:
+
+```
+roe model               # what's pinned in this project
+roe model <id>          # change it, then commit + push to propagate
+```
+
+Note: a machine without access to the pinned provider will error at session start — exactly
+as it would if you picked that model there manually.
 
 ## Only manual moments (by design)
 

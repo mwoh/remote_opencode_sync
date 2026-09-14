@@ -204,7 +204,7 @@ echo "  Uninstall manifest: $MANIFEST"
 echo
 if [[ "$FAILED" -eq 0 ]]; then
   echo "Setup complete. Next: git clone any project and opencode into it."
-  echo "To remove everything later: scripts/uninstall.sh"
+  echo "To remove everything later: roe uninstall (or scripts/uninstall.sh)"
 else
   echo "Setup finished WITH WARNINGS — see the '!' lines above."
   exit 1

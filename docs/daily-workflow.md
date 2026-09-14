@@ -14,7 +14,7 @@ the practical playbook.
 ## New project (from any machine)
 
 ```
-roe new <name>
+roe new <name> [--model <id>]
 ```
 
 That's `scripts/new-project.sh <name>` under the hood (`roe` runs it from anywhere; the
@@ -22,7 +22,9 @@ script spelling works from the toolkit root too).
 
 Pre-flight checks `git`, `gh`, and auth, then creates a **private** GitHub repo, clones
 it, seeds `AGENTS.md`, `CONTINUE.md`, `opencode.jsonc`, `.gitignore`, `.env.example`,
-commits, and pushes. Then:
+commits, and pushes. The model pinned in `opencode.jsonc` comes from `--model <id>`,
+`$MODEL_PIN`, or your global opencode config (in that order) — every machine then opens
+the project on that model. Then:
 
 ```
 cd <name>
@@ -42,6 +44,8 @@ roe adopt <dir> [--name <repo>] [--resolve append|ask|skip|overwrite] [--no-scan
 - `--scan` (default) drops a FIRST STEP into `CONTINUE.md` telling the first opencode
   session to scan the codebase and fill `AGENTS.md` Project overview + Status.
   `--no-scan` makes it ask you for the background instead.
+- Pins the model in `opencode.jsonc` — but an existing model in the config is respected
+  and kept (reported at adopt time). See *Pinned model* below.
 - Requires a git identity — `scripts/setup-machine.sh` configures one from GitHub.
 
 ## Updating the toolkit
@@ -116,6 +120,19 @@ Defined per-project in `opencode.jsonc`:
 
 You should never *need* these; they exist for explicit control and edge cases.
 
+## Pinned model
+
+Each project's `opencode.jsonc` carries a `model` key. It travels with the repo and
+overrides each machine's global opencode config, so every machine runs the same model.
+
+- Read it: `roe model` (shows what's pinned in the current directory).
+- Change it: `roe model <id>`, then commit + push — pull on the other machines and they
+  pick it up.
+- Set it at creation: `roe new <name> --model <id>` (default: your global config's
+  model). Adopting respects a model your config already declares.
+- Caveat: a machine without access to the pinned provider errors at session start — the
+  same as choosing that model there manually.
+
 ## Conflicts
 
 The plugin prefers `git pull --rebase`. If it fails (rare), the plugin logs an error and
@@ -163,6 +180,7 @@ a network path between them. It complements, not replaces, git sync.
 | "start pull failed" logged | resolve rebase conflict (see above), then continue |
 | "stash pop conflicted" | run `git stash pop` manually and resolve |
 | Idle snapshot not pushing | check `git status`; remote down? push later manually |
+| Wrong model being used | `roe model` to check the pin, `roe model <id>` to change it, then commit + push |
 | Plugin not syncing a project | project lacks the `.opencode/toolkit` marker — run `roe adopt . --resolve append` to adopt it |
 | Permanently stop auto-sync on one copy | `touch .opencode/state/no-session-sync` (local, gitignored) — or `rm .opencode/toolkit` to mark the repo non-toolkit |
 | Remove the toolkit | `roe uninstall` (or `~/.local/share/remote_opencode_sync/scripts/uninstall.sh`) + answer the questionnaire |

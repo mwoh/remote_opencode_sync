@@ -66,35 +66,38 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `templates/workflow-rules.md.tpl` | Rules-only block appended to existing `AGENTS.md` on adopt |
 | `templates/.gitignore.append.tpl` | Ignore patterns appended to existing `.gitignore` on adopt |
 | `templates/CONTINUE.md.tpl` | Handoff log starter with `LAST SESSION` block |
-| `templates/opencode.jsonc.tpl` | Project config: `/resume`, `/handoff`, `/sync` commands |
+| `templates/opencode.jsonc.tpl` | Project config: `/resume`, `/handoff`, `/sync` commands + pinned `model` (`@@MODEL@@`, substituted at seed time) |
 | `templates/.gitignore.tpl` | Excludes deps, builds, env files, machine-local state |
 | `templates/.env.example.tpl` | Reference for secret env vars (real `.env` is gitignored) |
 | `plugins/session-sync.js` | Global zero-touch sync plugin (Layer 2); acts only in projects carrying the `.opencode/toolkit` marker (opt-out: `.opencode/state/no-session-sync`) |
 | `scripts/bootstrap.sh` | One-liner install / update entry point (curl pipe) |
-| `bin/roe` | The `roe` command front-end: a single short command dispatching every script (`update`/`setup`/`new`/`adopt`/`uninstall`/`version`); symlinked into `~/.local/bin` by setup, resolved via `readlink -f` so it follows updates |
+| `bin/roe` | The `roe` command front-end: a single short command dispatching every script (`update`/`setup`/`new`/`adopt`/`model`/`uninstall`/`version`); symlinked into `~/.local/bin` by setup, resolved via `readlink -f` so it follows updates |
 | `scripts/update.sh` | Update an already-installed toolkit |
-| `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`) |
-| `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key); writes the uninstall manifest used by `scripts/uninstall.sh` |
+| `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`, `--model`) |
+| `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key); links `roe` into `~/.local/bin` + PATH; writes the uninstall manifest used by `scripts/uninstall.sh` |
 | `scripts/uninstall.sh` | Reverse of setup: removes only what the install created (per the manifest), per-tool/auth/ssh questionnaire, `--dry-run`/`--yes` |
-| `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest) |
+| `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest, model pin: `model_resolve`/`model_set`/`model_get`) |
 | `docs/machine-setup.md` | First-step checklist for a new machine (what the script does) |
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 
 ## Workflows
 
 ### New project (run once, from any machine)
-1. `scripts/new-project.sh <name> [--setup]`
+1. `scripts/new-project.sh <name> [--setup] [--model <id>]`
    - Pre-flight checks `git`, `gh`, and `gh auth`; fails fast with guidance
      (points to `docs/machine-setup.md` / `scripts/setup-machine.sh`), or with
      `--setup` hands off to the setup script automatically.
+   - Pins the opencode model in `opencode.jsonc` (from `--model` > `$MODEL_PIN` >
+     global opencode config > prompt; line omitted if unresolved).
    - `gh repo create <name> --private --clone`, seeds the templates, first commit + push.
 2. `cd <name> && opencode` — plugin pulls (nothing to pull on day one), base prompt
    orients you.
 
 ### Adopt an existing directory (run once)
 `scripts/new-project.sh --existing <dir> [--name <repo>] [--resolve …] [--no-scan]
-[--force]` — preserves history, seeds/workflow rules without clobbering (append by
-default), drops a FIRST STEP for the first session's scan-and-orient pass, commits +
+[--force] [--model <id>]` — preserves history, seeds/workflow rules without clobbering
+(append by default), drops a FIRST STEP for the first session's scan-and-orient pass,
+pins the model in `opencode.jsonc` (an existing model is respected and kept), commits +
 pushes.
 
 ### Project updates (run from any machine)
@@ -143,5 +146,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Create the GitHub repo for the toolkit and push
 - [x] Adopt-existing mode + update.sh (v1.1.0) implemented and dry-run tested
 - [x] Released v1.0.0 / v1.1.0 / v1.2.0 / v1.3.0 / v1.3.1 / v1.4.0 (adopt-existing, update.sh, uninstall.sh, plugin project-gating, per-session debounce, `roe` command) with installer SHA pins
+- [ ] Released v1.5.0 (per-project model pinning: `--model` / `$MODEL_PIN` / global config default, `roe model`, adopt respect-existing; docs audit + README rebrand)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
-- [ ] `scripts/new-project.sh` a real project and verify cross-machine resume
+- [ ] `roe new` a real project and verify cross-machine resume

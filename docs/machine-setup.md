@@ -80,7 +80,15 @@ roe version
 (If `roe` isn't found yet, it's because `~/.local/bin` wasn't on your `PATH` before — setup
 added the line to `~/.bashrc`; open a new shell or `source ~/.bashrc`.)
 
-## 7. Next steps
+## 7. Model pinning (short version)
+
+New projects pin the opencode model in their `opencode.jsonc` — your global opencode
+config's model by default — so every machine that opens the repo runs the same one.
+Override at creation with `roe new <name> --model <id>`; change it later with
+`roe model <id>` (then commit + push). A machine without access to the pinned provider
+will error at session start, exactly as it would if you picked that model manually.
+
+## 8. Next steps
 
 - Bring a project onto this machine: `gh repo clone <project>` → `cd <project>` →
   install deps → `opencode`.

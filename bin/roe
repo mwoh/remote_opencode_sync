@@ -16,6 +16,9 @@ SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(dirname "$(dirname "$SELF")")"
 SCRIPTS="$ROOT/scripts"
 
+# shellcheck source=lib.sh
+source "$SCRIPTS/lib.sh" 2>/dev/null || true  # needed for the 'model' subcommand
+
 SC_UPDATE="$SCRIPTS/update.sh"
 SC_SETUP="$SCRIPTS/setup-machine.sh"
 SC_UNINSTALL="$SCRIPTS/uninstall.sh"
@@ -34,6 +37,7 @@ Commands:
   setup | machine      one-time machine setup (prereqs, gh auth, ssh key, identity)
   new <name> [--setup] create & push a new project, then opencode into it
   adopt <dir> [args]   turn an existing local project into a synced project
+  model [id]           show the project's pinned model; with id, change it
   uninstall [opts]     reverse the install (also removes the roe symlink + PATH line)
 
 Run 'roe <command> --help' for script-specific options.
@@ -70,6 +74,21 @@ main() {
     uninstall)   require "$SC_UNINSTALL" && exec "$SC_UNINSTALL" "$@" ;;
     new|create)  require "$SC_NEW"     && exec "$SC_NEW" "$@" ;;
     adopt)       require "$SC_NEW"     && exec "$SC_NEW" --existing "$@" ;;
+    model)
+      local pinned pin_file
+      if [[ $# -eq 0 ]]; then
+        pinned="$(model_get "$PWD" || true)"
+        if [[ -n "$pinned" ]]; then echo "$PWD -> $pinned"
+        else echo "no model pinned in $PWD (pin one with: roe model <id>)"; fi
+      elif [[ $# -eq 1 ]]; then
+        pin_file="$(model_set "$PWD" "$1")"
+        echo "pinned model '$1' in $(basename "$pin_file") ($PWD)"
+        echo "  propagate to every machine: git add $(basename "$pin_file") && git commit -m \"model: pin $1\" && git push"
+      else
+        echo "roe model: too many arguments" >&2
+        return 2
+      fi
+      ;;
     *) echo "roe: unknown command: $cmd" >&2; usage >&2; return 2 ;;
   esac
 }

@@ -64,6 +64,88 @@ pkg_remove() {
   esac
 }
 
+# --- Model pin helpers ------------------------------------------------------
+# Each project's opencode.json(c) can carry a "model" key so every machine that
+# clones the repo runs the same model (project config overrides the global one).
+# new-project.sh seeds it; the 'roe model' command views/edits it.
+
+# model_from_global — echoes the model from the user's global opencode config, or "".
+model_from_global() {
+  local cfg="$HOME/.config/opencode/opencode.json"
+  [[ -f "$cfg" ]] || return 1
+  grep -oE '"model"[[:space:]]*:[[:space:]]*"[^"]*"' "$cfg" 2>/dev/null \
+    | head -n1 | sed -E 's/.*"model"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/'
+}
+
+# model_get <dir> — echoes the model pinned in a project's opencode config
+#   (opencode.json wins over opencode.jsonc, matching opencode precedence), or "".
+model_get() {
+  local dir="$1" cfg
+  for cfg in opencode.json opencode.jsonc; do
+    if [[ -f "$dir/$cfg" ]]; then
+      local v
+      v="$(grep -oE '"model"[[:space:]]*:[[:space:]]*"[^"]*"' "$dir/$cfg" 2>/dev/null \
+        | head -n1 | sed -E 's/.*"model"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
+      [[ -n "$v" ]] && { echo "$v"; return 0; }
+    fi
+  done
+  return 1
+}
+
+# model_resolve <requested> — precedence: <requested> (from --model) > $MODEL_PIN
+#   > the user's global opencode config model > an interactive prompt. Echoes the
+#   model, or "" if unresolved (callers then omit the model line entirely rather
+#   than seeding a broken placeholder).
+model_resolve() {
+  local requested="${1:-}" global_candidate="" line
+  [[ -n "$requested" ]] || requested="${MODEL_PIN:-}"
+  if [[ -n "$requested" ]]; then echo "$requested"; return 0; fi
+  global_candidate="$(model_from_global)"
+  if [[ -n "$global_candidate" ]]; then echo "$global_candidate"; return 0; fi
+  if read -r -p "  Model id for this project (blank = don't pin one): " line; then
+    [[ -n "$line" ]] && { echo "$line"; return 0; }
+  fi
+  return 1
+}
+
+# model_set <dir> <id> — pins the model in a project's opencode config: rewrites
+#   an existing "model" key in place (preferring opencode.json, then opencode.jsonc),
+#   or injects one before the closing brace; creates a minimal opencode.jsonc if
+#   neither file exists. Echoes the file written.
+model_set() {
+  local dir="$1" model="$2" cfg="" tmp
+  if [[ -f "$dir/opencode.json" ]]; then cfg="$dir/opencode.json"
+  elif [[ -f "$dir/opencode.jsonc" ]]; then cfg="$dir/opencode.jsonc"
+  fi
+  if [[ -z "$cfg" ]]; then
+    cfg="$dir/opencode.jsonc"
+    printf '{\n  "$schema": "https://opencode.ai/config.json",\n  "model": "%s"\n}\n' "$model" > "$cfg"
+    echo "$cfg"
+    return 0
+  fi
+  tmp="$cfg.tmp.$$"
+  if grep -qE '"model"[[:space:]]*:[[:space:]]*"' "$cfg"; then
+    sed -E "s|(\"model\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\1$model\2|" "$cfg" > "$tmp"
+  else
+    awk -v model="$model" '
+      { buf[NR] = $0 }
+      END {
+        for (i = NR; i >= 1; i--) if (buf[i] ~ /[^[:space:]]/) { last = i; break }
+        prev = last - 1
+        while (prev >= 1 && buf[prev] ~ /^[[:space:]]*$/) prev--
+        if (prev >= 1 && buf[prev] !~ /,\s*$/) buf[prev] = buf[prev] ","
+        comma = (buf[last] ~ /^[[:space:]]*[}\]]/) ? "" : ","
+        for (i = 1; i <= NR; i++) {
+          if (i == prev) print buf[i]
+          else if (i == last) { print "  \"model\": \"" model "\"" comma; print buf[i] }
+          else print buf[i]
+        }
+      }' "$cfg" > "$tmp"
+  fi
+  mv "$tmp" "$cfg"
+  echo "$cfg"
+}
+
 # --- Uninstall manifest helpers -------------------------------------------
 # The manifest is a plain key=value file (no jq dependency) written to a
 # location OUTSIDE the toolkit clone, so it survives an uninstall that removes
