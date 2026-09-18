@@ -119,6 +119,13 @@ scripts/
 docs/
   machine-setup.md          new-machine checklist (the first step)
   daily-workflow.md         everyday playbook + advanced options
+  scripts-reference.md      every script, its options, and how roe wires through
+  agent-handoff.md          takeover guide: current state, tests, release process
+tests/
+  features.sh               61-check sandbox e2e (fake gh) — run before any release
+  model-features.sh         28-check model-helper regression
+  plugin-test.mjs           15-check session-sync plugin harness
+  shims/gh                  fake `gh` backing the sandbox
 ```
 
 ### What each piece does

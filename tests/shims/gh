@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# gh shim for the roe sandbox — backs `gh` calls with a fake GitHub rooted at
+# $GH_FAKE_ROOT (a directory of bare git repos under $GH_FAKE_ROOT/$OWNER/<name>.git),
+# plus optional <name>.git.roe-meta files (private/archived/description).
+set -u
+
+FAKE_ROOT="${GH_FAKE_ROOT:?GH_FAKE_ROOT must be set}"
+OWNER="${GH_FAKE_OWNER:-fakeuser}"
+
+bare_of() { printf '%s/%s.git' "${FAKE_ROOT}/${OWNER}" "$1"; }
+
+meta_val() {
+  local bare="$1" key="$2" def="${3:-}"
+  if [[ -s "$bare.roe-meta" ]]; then
+    grep "^${key}=" "$bare.roe-meta" | head -n1 | cut -d= -f2- || true
+  else
+    printf '%s' "$def"
+  fi
+}
+
+case "$1" in
+  auth)
+    [[ "${2:-}" == "status" ]] || exit 1
+    [[ "${GH_FAKE_AUTH:-no}" == "yes" ]]
+    ;;
+  api)
+    shift
+    jqhint=""
+    path=""
+    while (($#)); do
+      case "$1" in
+        --jq) shift; jqhint="${1:-}" ;;
+        -*) : ;;
+        *) [[ -z "$path" ]] && path="$1" ;;
+      esac
+      shift
+    done
+    case "$path" in
+      user)
+        case "$jqhint" in
+          .login) printf '%s\n' "$OWNER" ;;
+          '.name // empty') printf 'Fake User\n' ;;
+          '.email // empty') printf 'fake@example.com\n' ;;
+          *) printf '{"login":"%s","name":"Fake User","email":"fake@example.com"}\n' "$OWNER" ;;
+        esac
+        ;;
+      repos/*/contents/.opencode/toolkit)
+        repo="${path#repos/}"; repo="${repo%%/contents/*}"; repo="${repo#*/}"
+        bare="$(bare_of "$repo")"
+        if [[ -d "$bare" ]] && git --git-dir="$bare" ls-tree --name-only HEAD .opencode/toolkit 2>/dev/null | grep -qx '.opencode/toolkit'; then
+          printf '{"name":"toolkit","path":".opencode/toolkit"}\n'
+          exit 0
+        fi
+        printf 'HTTP 404: not found\n' >&2
+        exit 1
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  repo)
+    sub="$2"; shift 2
+    case "$sub" in
+      list)
+        [[ -d "${FAKE_ROOT}/${OWNER}" ]] || { printf 'gh: API unreachable\n' >&2; exit 1; }
+        for bare in "${FAKE_ROOT}/${OWNER}"/*.git; do
+          [[ -d "$bare" ]] || continue
+          name="$(basename "$bare")"; name="${name%.git}"
+          priv="$(meta_val "$bare" private true)"
+          arch="$(meta_val "$bare" archived false)"
+          desc="$(meta_val "$bare" description "")"
+          printf '%s\t%s\t%s\t%s\n' "$name" "$priv" "$arch" "$desc"
+        done
+        ;;
+      view)
+        [[ -d "$(bare_of "${1:-}")" ]]
+        ;;
+      create)
+        name="${1:-}"
+        [[ -n "$name" ]] || exit 1
+        bare="$(bare_of "$name")"
+        if [[ -d "$bare" ]]; then
+          printf 'HTTP 422: already exists\n' >&2
+          exit 1
+        fi
+        want_clone=0
+        for a in "$@"; do [[ "$a" == "--clone" ]] && want_clone=1; done
+        mkdir -p "$(dirname "$bare")"
+        git init --bare -q "$bare"
+        git --git-dir "$bare" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
+        printf 'https://github.com/%s/%s\n' "$OWNER" "$name"
+        if [[ "$want_clone" -eq 1 ]]; then
+          git clone -q "$bare" "$name"
+        fi
+        ;;
+      delete)
+        name="${1:-}"
+        rm -rf -- "$(bare_of "$name")" "$(bare_of "$name").roe-meta"
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac

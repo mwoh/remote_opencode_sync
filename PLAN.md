@@ -79,6 +79,9 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest, model pin: `model_resolve`/`model_set`/`model_get`) |
 | `docs/machine-setup.md` | First-step checklist for a new machine (what the script does) |
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
+| `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
+| `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
+| `tests/` | Vendored verification harnesses: `features.sh` (61 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Workflows
 
@@ -148,6 +151,8 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.0.0 / v1.1.0 / v1.2.0 / v1.3.0 / v1.3.1 / v1.4.0 (adopt-existing, update.sh, uninstall.sh, plugin project-gating, per-session debounce, `roe` command) with installer SHA pins
 - [x] Released v1.5.0 (per-project model pinning: `--model` / `$MODEL_PIN` / global config default, `roe model`, adopt respect-existing; docs audit + README rebrand)
 - [x] Released v1.5.1 (fix seeded `prompt`→`template` schema break; migrate the adopted project; migration note in docs)
-- [ ] Released v1.5.2 (resumable `new`/`adopt`; `roe desync`/`roe resync`; `roe projects`/`roe clone`; plugin silent in non-toolkit projects)
+- [x] Released v1.5.2 (resumable `new`/`adopt`; `roe desync`/`roe resync`; `roe projects`/`roe clone`; plugin silent in non-toolkit projects)
+- [x] Released v1.5.3 (fix `model_set` injection comma vs trailing `//` comments, caught by the rebuilt 28-check model regression)
+- [x] Vendored the verification harnesses into `tests/` + added the takeover guide (`docs/agent-handoff.md`)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume
