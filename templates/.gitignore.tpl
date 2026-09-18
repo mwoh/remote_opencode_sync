@@ -1,3 +1,4 @@
+# --- added by remote_opencode_sync ---
 # --- Dependencies (each machine installs its own) ---
 node_modules/
 .bun/

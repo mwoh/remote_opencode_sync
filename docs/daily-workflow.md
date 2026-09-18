@@ -48,6 +48,49 @@ roe adopt <dir> [--name <repo>] [--resolve append|ask|skip|overwrite] [--no-scan
   and kept (reported at adopt time). See *Pinned model* below.
 - Requires a git identity — `scripts/setup-machine.sh` configures one from GitHub.
 
+> **Interrupted `new`/`adopt`?** Re-run the exact same command. It detects the previous
+> attempt (a leftover clone pointing at the target URL, or an empty repo that never got
+> seeded), skips create/seed/commit, and finishes what's left — usually just the push.
+> A genuine collision (a non-empty repo you didn't create) is still refused with a hint.
+
+## Listing and cloning synced projects
+
+`roe projects` scans your GitHub account for repos carrying the committed
+`.opencode/toolkit` marker (the same marker the plugin runs on) and lists only those —
+nothing is cloned:
+
+```
+roe projects            # list synced projects (cached ~15 min)
+roe projects --refresh  # rescan now
+roe projects goals      # filter by substring
+```
+
+`roe clone <name>` verifies the repo is synced, clones it via SSH, and reminds you if
+`roe setup` is still needed on this machine:
+
+```
+roe clone <name>        # or: roe clone owner/name
+cd <name> && opencode   # already synced — clone carries marker, rules, commands
+```
+
+## Opting a machine out (`roe desync`)
+
+To freeze one working copy out of the sync loop — this machine stops pulling, pushing,
+`wip:`-backing-up, and following the rules, while the repo and other machines keep
+collaborating — run inside the project dir:
+
+```
+roe desync              # local-only; -y to skip the confirm
+roe resync              # undo, any time
+```
+
+- Writes the gitignored `.opencode/state/no-session-sync` — the plugin stops acting here.
+- Strips the sync rules from the **local** `AGENTS.md` (keeps the Project overview) and
+  pins the edit with `git update-index --skip-worktree`, so it can never commit/push.
+- Committed files (`opencode.jsonc`, `CONTINUE.md`, `session-logs/`, the marker, the repo
+  `AGENTS.md`) are untouched — other machines keep using them. The copy is frozen from the
+  moment desync runs.
+
 ## Updating the toolkit
 
 Once installed, either re-run the bootstrap curl command or:
@@ -76,8 +119,11 @@ never touched. To disable it for a single working copy: `touch .opencode/state/n
 
 ## New/unseen machine — Stage 2 (once per project)
 
+Find and clone a synced project:
+
 ```
-gh repo clone <name>
+roe projects                # which of my repos carry sync support?
+roe clone <name>            # clone one (or: gh repo clone <name>)
 cd <name>
 # install deps (npm install / pip install / etc.) — deps are never synced
 opencode
@@ -190,7 +236,9 @@ a network path between them. It complements, not replaces, git sync.
 | Idle snapshot not pushing | check `git status`; remote down? push later manually |
 | Wrong model being used | `roe model` to check the pin, `roe model <id>` to change it, then commit + push |
 | Plugin not syncing a project | project lacks the `.opencode/toolkit` marker — run `roe adopt . --resolve append` to adopt it |
-| Permanently stop auto-sync on one copy | `touch .opencode/state/no-session-sync` (local, gitignored) — or `rm .opencode/toolkit` to mark the repo non-toolkit |
+| `roe new`/`adopt` failed partway | re-run the same command — it resumes (skips create/seed/commit, finishes the push) |
+| Permanently stop auto-sync on one copy | `roe desync` (undo: `roe resync`) — or `touch .opencode/state/no-session-sync` manually |
+| Find my synced projects / clone one | `roe projects` / `roe clone <name>` |
 | Remove the toolkit | `roe uninstall` (or `~/.local/share/remote_opencode_sync/scripts/uninstall.sh`) + answer the questionnaire |
 | Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode — if it was never installed, this machine skipped `roe setup` |
-| New machine, no projects yet | run `roe new <name>` or `gh repo clone <name>` |
+| New machine, no projects yet | run `roe new <name>` or see what's already synced: `roe projects` then `roe clone <name>` |

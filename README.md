@@ -58,7 +58,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.0/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.2/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -75,7 +75,11 @@ need to remember the paths under `~/.local/share/remote_opencode_sync/scripts/` 
 | One-time machine setup | `roe setup` | `scripts/setup-machine.sh` |
 | Create a new project | `roe new <name>` | `scripts/new-project.sh <name>` |
 | Adopt an existing folder | `roe adopt <dir>` | `scripts/new-project.sh --existing <dir>` |
+| List your synced projects | `roe projects` | `scripts/projects.sh list` |
+| Clone a synced project | `roe clone <name>` | `scripts/projects.sh clone <name>` |
 | Pin the model used here | `roe model [<id>]` | rewrites the project's `opencode.jsonc` |
+| Stop this machine syncing a copy | `roe desync` | `scripts/desync.sh` |
+| Undo desync | `roe resync` | `scripts/resync.sh` |
 | Uninstall | `roe uninstall` | `scripts/uninstall.sh` |
 | Version info | `roe version` | — |
 | Help | `roe help` | — |
@@ -105,7 +109,10 @@ bin/
 scripts/
   bootstrap.sh              one-liner install/update entry point
   update.sh                 update an already-installed toolkit
-  new-project.sh            create or adopt a project (see below)
+  new-project.sh            create or adopt a project (see below; resumable)
+  projects.sh               list your synced projects / clone one onto this machine
+  desync.sh                 stop one working copy from syncing (local only)
+  resync.sh                 undo a desync
   setup-machine.sh          lazy one-time machine setup
   uninstall.sh              remove what setup created (see below)
   lib.sh                    shared helpers (placeholder relink, package install/remove, manifest)
@@ -140,7 +147,12 @@ docs/
   resolves through the symlink (`readlink -f`), it always runs the toolkit it came from.
 - **`new-project.sh`** — per-project, once: create (or adopt) the repo, seed the
   templates + the `.opencode/toolkit` marker (this is what tells the plugin a project uses
-  the toolkit), first commit + push.
+  the toolkit), first commit + push. Re-running after an interruption resumes, so a network
+  blip mid-create/seed/commit/push is not fatal.
+- **`projects.sh`** — per request: scan the user's GitHub repos for the `.opencode/toolkit`
+  marker (`roe projects`, with a short-lived cache) and clone a compatible repo (`roe clone`).
+- **`desync.sh` / `resync.sh`** — per working copy: opt one machine's copy of a project out
+  of the sync loop (`roe desync`) and bring it back (`roe resync`). Local-only, never pushed.
 - **`lib.sh`** — internal helpers (placeholder relink, package install/remove, uninstall
   manifest); you never call it directly.
 
@@ -244,6 +256,34 @@ roe adopt <dir>
 Requires a git identity (`git config user.name/email`) — `scripts/setup-machine.sh` sets
 it from your GitHub profile automatically.
 
+> **Interrupted mid-way?** Both `new` and `adopt` are resumable. If the network drops
+> (or anything else stops them partway), simply **re-run the exact same command** — it
+> detects the leftover clone/empty repo, skips create + seed + commit, and only finishes
+> what's left (usually the push).
+
+## Listing and cloning synced projects
+
+Your GitHub account may hold many repos, but only the ones carrying the committed
+`.opencode/toolkit` marker are remote_opencode_sync projects (the same marker the plugin
+gates on). Discover them without cloning everything:
+
+```
+roe projects            # list your synced projects (cached ~15 min)
+roe projects --refresh  # force a fresh scan
+roe projects goals      # filter by substring
+```
+
+Then clone one straight onto this machine — it arrives fully synced (the marker, the
+`AGENTS.md` rules, and the fallback commands all travel in the repo):
+
+```
+roe clone <name>        # or: roe clone owner/name
+cd <name> && opencode
+```
+
+`roe clone` verifies the repo really is a synced project before cloning and reminds you if
+the machine still needs `roe setup` (plugin / SSH key / git identity).
+
 ## Working on an existing project (a repo already on GitHub)
 
 For a project that's already on GitHub — e.g. you created it on another machine — and you
@@ -311,6 +351,35 @@ as it would if you picked that model there manually.
 - Work done entirely outside opencode — safe, but syncs at the next session start/idle
   instead of in real time.
 
+## Desyncing one machine's copy
+
+If you want a single working copy to stop participating in the sync — keep the project
+exactly as it is, but stop this machine from pulling, pushing, `wip:`-backing-up, or
+following the sync rules — while the repo and every other machine keep collaborating:
+
+```
+roe desync          # run inside the project directory (confirm with -y if you prefer)
+```
+
+This is purely local and reversible:
+
+- Writes `.opencode/state/no-session-sync` (gitignored) — the global plugin becomes a
+  no-op in this working copy.
+- Strips the sync-rules block from the **local** `AGENTS.md` (keeping the Project
+  overview) and pins that edit with `git update-index --skip-worktree` so it can never
+  be committed or pushed by accident.
+
+The committed sync files (`AGENTS.md` in the repo, `opencode.jsonc`, `CONTINUE.md`,
+`session-logs/`, the marker) stay put — other machines keep using them. This copy just
+frozen out from that point on. Undo:
+
+```
+roe resync
+```
+
+> `roe` only ever acts in marker projects. In any other opencode project the plugin is a
+> complete, silent no-op — no git commands, no logs.
+
 ## Advanced: opencode server mode
 
 For heavy tasks you can run opencode **server mode on the desktop** and drive that same
@@ -343,10 +412,11 @@ removes the `roe` symlink and the PATH line setup added, so uninstall is a full 
 - Installs from before the manifest existed can't be attributed safely — the
   script removes the clone + plugin and tells you what it left alone.
 
-**Your projects are never touched.** If you also want a project's sync files
-(`AGENTS.md`, `CONTINUE.md`, `opencode.jsonc`, `.env.example`, `session-logs/`)
-gone, delete them from that repo and revert the `remote_opencode_sync` marker
-section of its `.gitignore` — the uninstaller won't do it for you.
+**Your projects are never touched.** To stop a single working copy from syncing while
+everyone else keeps going, use `roe desync` (local only); `roe resync` reverses it. If you
+truly want a project's sync files removed from the **repo** (for every machine), delete
+them from that repo yourself and revert the `remote_opencode_sync` marker section of its
+`.gitignore` — the uninstaller won't do it for you.
 
 ## Security
 

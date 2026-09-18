@@ -146,6 +146,8 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Create the GitHub repo for the toolkit and push
 - [x] Adopt-existing mode + update.sh (v1.1.0) implemented and dry-run tested
 - [x] Released v1.0.0 / v1.1.0 / v1.2.0 / v1.3.0 / v1.3.1 / v1.4.0 (adopt-existing, update.sh, uninstall.sh, plugin project-gating, per-session debounce, `roe` command) with installer SHA pins
-- [ ] Released v1.5.0 (per-project model pinning: `--model` / `$MODEL_PIN` / global config default, `roe model`, adopt respect-existing; docs audit + README rebrand)
+- [x] Released v1.5.0 (per-project model pinning: `--model` / `$MODEL_PIN` / global config default, `roe model`, adopt respect-existing; docs audit + README rebrand)
+- [x] Released v1.5.1 (fix seeded `prompt`→`template` schema break; migrate the adopted project; migration note in docs)
+- [ ] Released v1.5.2 (resumable `new`/`adopt`; `roe desync`/`roe resync`; `roe projects`/`roe clone`; plugin silent in non-toolkit projects)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume

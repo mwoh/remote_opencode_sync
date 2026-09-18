@@ -23,6 +23,9 @@ SC_UPDATE="$SCRIPTS/update.sh"
 SC_SETUP="$SCRIPTS/setup-machine.sh"
 SC_UNINSTALL="$SCRIPTS/uninstall.sh"
 SC_NEW="$SCRIPTS/new-project.sh"
+SC_PROJECTS="$SCRIPTS/projects.sh"
+SC_DESYNC="$SCRIPTS/desync.sh"
+SC_RESYNC="$SCRIPTS/resync.sh"
 
 usage() {
   cat <<EOF
@@ -37,11 +40,15 @@ Commands:
   setup | machine      one-time machine setup (prereqs, gh auth, ssh key, identity)
   new <name> [--setup] create & push a new project, then opencode into it
   adopt <dir> [args]   turn an existing local project into a synced project
+  projects [name...]   list your GitHub projects that carry sync support (alias: list)
+  clone <name>         clone a synced project onto this machine
   model [id]           show the project's pinned model; with id, change it
+  desync               stop THIS machine's copy of a project from syncing
+  resync               undo desync (bring a copy back into the sync loop)
   uninstall [opts]     reverse the install (also removes the roe symlink + PATH line)
 
 Run 'roe <command> --help' for script-specific options.
-Aliases: create = new
+Aliases: create = new, list = projects
 EOF
 }
 
@@ -74,6 +81,10 @@ main() {
     uninstall)   require "$SC_UNINSTALL" && exec "$SC_UNINSTALL" "$@" ;;
     new|create)  require "$SC_NEW"     && exec "$SC_NEW" "$@" ;;
     adopt)       require "$SC_NEW"     && exec "$SC_NEW" --existing "$@" ;;
+    projects|list) require "$SC_PROJECTS" && exec "$SC_PROJECTS" list "$@" ;;
+    clone)       require "$SC_PROJECTS" && exec "$SC_PROJECTS" clone "$@" ;;
+    desync)      require "$SC_DESYNC"  && exec "$SC_DESYNC" "$@" ;;
+    resync)      require "$SC_RESYNC"  && exec "$SC_RESYNC" "$@" ;;
     model)
       local pinned pin_file
       if [[ $# -eq 0 ]]; then

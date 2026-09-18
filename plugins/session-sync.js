@@ -5,8 +5,9 @@
 //
 // The plugin is loaded in EVERY opencode session, but only acts in projects that
 // carry the toolkit marker (`.opencode/toolkit`, seeded + committed by
-// new-project.sh) — other projects are completely untouched. A local marker
-// `.opencode/state/no-session-sync` (gitignored) opts a single working copy out.
+// new-project.sh) — other projects are completely untouched, silently (no logs).
+// A local marker `.opencode/state/no-session-sync` (gitignored) opts a single
+// working copy out.
 //
 // What it does:
 //   session.created  -> git plumbing: fetch, safe stash/pop, `pull --rebase`,
@@ -121,11 +122,8 @@ export const SessionSync = async (ctx) => {
       lastStartSync = now
       startWarned = false
 
+      if (!(await isToolkitProject())) return // silent: non-toolkit projects are fully invisible
       if (!(await isRepo())) return
-      if (!(await isToolkitProject())) {
-        await log("info", "not a toolkit project (no .opencode/toolkit marker) — skipping start sync")
-        return
-      }
       if (!(await hasRemote())) return // local-only project; nothing to sync
 
       const upstream = await git("rev-parse --abbrev-ref --symbolic-full-name @{upstream}")
@@ -188,11 +186,8 @@ export const SessionSync = async (ctx) => {
       lastIdleSync = now
       idleWarned = false
 
+      if (!(await isToolkitProject())) return // silent: non-toolkit projects are fully invisible
       if (!(await isRepo())) return
-      if (!(await isToolkitProject())) {
-        await log("info", "not a toolkit project (no .opencode/toolkit marker) — skipping idle snapshot")
-        return
-      }
       if (!(await hasRemote())) return
 
       const status = await git("status --porcelain")
