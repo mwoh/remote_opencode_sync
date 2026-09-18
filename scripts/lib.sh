@@ -128,12 +128,34 @@ model_set() {
     sed -E "s|(\"model\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\1$model\2|" "$cfg" > "$tmp"
   else
     awk -v model="$model" '
+      # position of the first // comment that is not inside a string; 0 = none
+      function cmtpos(s,   i, n, ch, in_str) {
+        n = length(s); in_str = 0
+        for (i = 1; i <= n; i++) {
+          ch = substr(s, i, 1)
+          if (in_str) {
+            if (ch == "\\") i++
+            else if (ch == "\"") in_str = 0
+          } else {
+            if (ch == "\"") in_str = 1
+            else if (ch == "/" && substr(s, i + 1, 1) == "/") return i
+          }
+        }
+        return 0
+      }
       { buf[NR] = $0 }
       END {
         for (i = NR; i >= 1; i--) if (buf[i] ~ /[^[:space:]]/) { last = i; break }
         prev = last - 1
         while (prev >= 1 && buf[prev] ~ /^[[:space:]]*$/) prev--
-        if (prev >= 1 && buf[prev] !~ /,\s*$/) buf[prev] = buf[prev] ","
+        if (prev >= 1) {
+          cpos = cmtpos(buf[prev])
+          code = (cpos ? substr(buf[prev], 1, cpos - 1) : buf[prev])
+          if (code !~ /,\s*$/) {
+            if (cpos) buf[prev] = substr(buf[prev], 1, cpos - 1) "," substr(buf[prev], cpos)
+            else buf[prev] = buf[prev] ","
+          }
+        }
         comma = (buf[last] ~ /^[[:space:]]*[}\]]/) ? "" : ","
         for (i = 1; i <= NR; i++) {
           if (i == prev) print buf[i]
