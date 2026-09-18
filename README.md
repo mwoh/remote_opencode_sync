@@ -93,6 +93,7 @@ yet — setup adds `~/.local/bin` to `PATH` if it was missing.
 
 ```
 PLAN.md                     the plan / architecture
+AGENTS.md                   standing session instructions (keep-everything-in-sync mandate)
 LICENSE                     MIT
 templates/                  per-project files created/used by new-project.sh
   AGENTS.md.tpl             base prompt / workflow rules (Layer 1)

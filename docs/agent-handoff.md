@@ -123,9 +123,14 @@ Before any release:
 
 1. **Verify**: run all three suites + `bash -n` (§3). All green: features 61, model 28,
    plugin 15.
-2. **Bump docs**: in `README.md` the pinned "safer variant" install line currently points
-   at `vX.Y.Z/scripts/bootstrap.sh` — update the version there when you cut a release.
-   Keep `PLAN.md` roadmap checkboxes and this document's "Current state" in sync.
+2. **Bump docs** — a version bump updates these **together, in the same commit**:
+   - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)
+     and any behavior claims touched by the release;
+   - `PLAN.md`: roadmap checkboxes;
+   - this document: "Current state" + "Release history";
+   - the gh release notes (with the bootstrap SHA block).
+   If any suite's check count changed since the last release, update the claimed counts
+   in README, PLAN, this doc, and the release notes in the same change too.
 3. **Commit** with the repo's style: `type: <lowercase subject> (vX.Y.Z)` using one of
    `feat:`, `fix:`, `docs:`, `chore:`. **Only commit when the user asks.**
 4. **Tag** an annotated tag: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`
@@ -149,6 +154,17 @@ Before any release:
 
 ## 5. Working conventions
 
+- **Never leave anything stale.** Any change ships as **one coherent change set**:
+  when you touch code (or templates, plugins, `bin/roe`), update in the same change —
+  the code itself, the tests that cover it (`tests/*`, re-run them), `README.md`
+  (command tables, layout listing, pinned install URL, behavior claims), `PLAN.md`
+  (component table + roadmap checkboxes), `docs/scripts-reference.md` (options,
+  dispatch, env vars), `docs/daily-workflow.md` / `docs/machine-setup.md` (only if
+  behavior touches those flows — check, don't assume), this document (Current state,
+  release history, test counts, gotchas), and release notes/SHA when a release is cut.
+- **Test-count rule:** when a suite's check count changes, update the printed claim of
+  that count everywhere it appears (README, PLAN, this doc, release notes) in the same
+  change. A stale count is a bug.
 - **Only commit, push, tag, or release when explicitly asked.** The user drives cadence.
 - Commit-message style: `type(scope): summary` → actually the repo uses
   `type: summary (vX.Y.Z)` (no scope) for shipped versions; see `git log` for precedent.

@@ -61,6 +61,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 
 | Path | Purpose |
 | --- | --- |
+| `AGENTS.md` | Standing session instructions: the never-leave-anything-stale mandate, conventions, test/release pointers |
 | `PLAN.md` | This document |
 | `templates/AGENTS.md.tpl` | The base prompt / workflow rules (Layer 1) |
 | `templates/workflow-rules.md.tpl` | Rules-only block appended to existing `AGENTS.md` on adopt |
@@ -153,6 +154,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.1 (fix seeded `prompt`→`template` schema break; migrate the adopted project; migration note in docs)
 - [x] Released v1.5.2 (resumable `new`/`adopt`; `roe desync`/`roe resync`; `roe projects`/`roe clone`; plugin silent in non-toolkit projects)
 - [x] Released v1.5.3 (fix `model_set` injection comma vs trailing `//` comments, caught by the rebuilt 28-check model regression)
-- [x] Vendored the verification harnesses into `tests/` + added the takeover guide (`docs/agent-handoff.md`)
+- [x] Vendored the verification harnesses into `tests/` + added the takeover guide (`docs/agent-handoff.md`) and standing session instructions (`AGENTS.md`; the never-leave-anything-stale mandate)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume
