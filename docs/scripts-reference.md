@@ -31,6 +31,10 @@ even after you clone the repo elsewhere. `roe update` keeps that copy current.
 | `setup-machine.sh`         | `roe setup` (alias `machine`) | one-time machine setup |
 | `new-project.sh`           | `roe new <name>`, `roe create <name>`, `roe adopt <dir>` | create or adopt a synced project (resumable) |
 | `projects.sh`              | `roe projects` (alias `list`), `roe clone <name>` | discover & clone synced projects |
+| `status.sh`                | `roe status [<dir>]`       | is it a valid roe project; what does it need? |
+| `pull.sh`                  | `roe pull [<dir>]`         | fetch + clean rebase (manual pull) |
+| `push.sh`                  | `roe push [<dir>]`         | push committed state (refuses non-fast-forward) |
+| `upgrade.sh`               | `roe upgrade [<dir>]`      | non-destructive refresh of a project's seed files |
 | `desync.sh`                | `roe desync`               | freeze one working copy out of sync |
 | `resync.sh`                | `roe resync`               | undo a desync |
 | `uninstall.sh`             | `roe uninstall`            | remove the toolkit + what setup created |
@@ -50,14 +54,20 @@ projects|list) require "$SC_PROJECTS"   && exec "$SC_PROJECTS" list "$@" ;;
 clone)       require "$SC_PROJECTS"     && exec "$SC_PROJECTS" clone "$@" ;;
 setup|machine) require "$SC_SETUP"      && exec "$SC_SETUP"      "$@" ;;
 update)      require "$SC_UPDATE"       && exec "$SC_UPDATE"     "$@" ;;
+status)      require "$SC_STATUS"       && exec "$SC_STATUS"     "$@" ;;
+pull)        require "$SC_PULL"         && exec "$SC_PULL"       "$@" ;;
+push)        require "$SC_PUSH"         && exec "$SC_PUSH"       "$@" ;;
+upgrade)     require "$SC_UPGRADE"      && exec "$SC_UPGRADE"    "$@" ;;
 uninstall)   require "$SC_UNINSTALL"    && exec "$SC_UNINSTALL"  "$@" ;;
 ```
 
 There are only three shapes of argument handling to keep in mind:
 
-1. **Complete pass-through** — `roe new`, `roe setup`, `roe update`, `roe desync`,
-   `roe resync`, `roe uninstall` forward `"$@"` unchanged. Anything the script accepts,
-   `roe` accepts identically, including `--help`.
+1. **Complete pass-through** — `roe new`, `roe setup`, `roe update`, `roe status`,
+   `roe pull`, `roe push`, `roe upgrade`, `roe desync`, `roe resync`, `roe uninstall`
+   forward `"$@"` unchanged. Anything the script accepts, `roe` accepts identically,
+   including `--help`. The four sync commands take one optional argument — the project
+   directory, defaulting to the current directory (`roe status ~/work/project`).
 
 2. **A fixed prefix injected by `roe`** — three commands prepend a word before
    forwarding your args:
@@ -231,6 +241,98 @@ the JSON).
 Env: `ROE_PROJECTS_TTL` (cache TTL seconds), `XDG_CACHE_HOME`, `GITHUB_USER`,
 `GITHUB_SSH_BASE`.
 
+## `status.sh` — is a project valid, and what does it need?
+
+```
+roe status [<dir>]       # default: current directory
+```
+
+Read-only advisory (the only write is a `git fetch`). Checks the `.opencode/toolkit`
+marker (a directory without it is "not a remote_opencode_sync project"), then reports the
+working copy's sync state and names the exact next command:
+
+| State | Reported as | Exit |
+|-------|-------------|------|
+| valid + everything current | `state: all caught up` | 0 |
+| ahead of upstream | `state: ahead by N — run: roe push` | 2 |
+| behind upstream | `state: behind by N — run: roe pull` | 2 |
+| diverged | `state: diverged (N ahead, M behind) — reconcile with: git pull --rebase` | 2 |
+| dirty tree | `state: N uncommitted change(s) — commit them, then push` | 2 |
+| local desync opt-out | `desynced on this machine (no-session-sync opt-out)` | 2 |
+| project seed drift | `seed: drifted from the current toolkit — run: roe upgrade` | 2 |
+| toolkit behind | `toolkit: installed X, latest Y — run: roe update` | 2 |
+| not a roe project | `not a remote_opencode_sync project` | 1 |
+| not a git repo / no origin / no upstream | sync is impossible (message) | 1 |
+
+Seed drift is the same `lib.sh` predicate `upgrade.sh` uses (`project_seed_stale`), so
+status and upgrade can never disagree. The trailing health lines (pinned model, plugin
+installed here, tracking branch) are informational only — they never affect the exit code.
+
+Env: none.
+
+## `pull.sh` — fetch + clean rebase (manual pull)
+
+```
+roe pull [<dir>]         # default: current directory
+```
+
+The manual counterpart of the plugin's session-start ritual (see
+`plugins/session-sync.js`): requires the toolkit marker and an upstream, fetches, and if
+behind runs `pull --rebase`, stashing any local dirt first and popping it back afterwards.
+Exits 0 when pulled (or already up to date), 1 when the pull/rebase fails or the directory
+isn't a roe project. On stash-pop conflicts it completes the pull and tells you to run
+`git stash pop` yourself.
+
+Env: none.
+
+## `push.sh` — push committed state (manual push)
+
+```
+roe push [<dir>]         # default: current directory
+```
+
+The outbound half. Requires the marker and an upstream; fetches first and **refuses** a
+non-fast-forward (remote ahead) so it can never clobber commits made elsewhere — it tells
+you to `roe pull` instead. Exits 0 when pushed (or nothing to push), 1 on refusal/failure.
+
+Env: none.
+
+## `upgrade.sh` — refresh a project's sync layer to the current toolkit
+
+```
+roe upgrade [<dir>]      # default: current directory
+```
+
+Non-destructive refresh of an existing roe project, so it speaks the current toolkit's
+dialect (newer rules, commands, ignore patterns). Refuses to run unless the directory
+carries the marker (`roe adopt` first) and the working tree is clean (it never bundles your
+work). Sequence:
+
+1. Pulls first (`fetch` + `pull --rebase` when behind) so the refresh sits on the latest.
+2. Refreshes only what is missing or drifted:
+   - `.opencode/toolkit` → rewritten to the current marker content if it drifted.
+   - `opencode.json(c)` → the `resume`/`handoff`/`sync` command block is restored **without
+     touching the model or other keys** (comment-aware `jsonc_inject_block`); if the
+     `command` key exists but is incomplete, it is left alone and flagged for a manual
+     merge from `templates/opencode.jsonc.tpl`. With **no** config at all it seeds a fresh
+     `opencode.jsonc` from the template (model pinned if resolvable).
+   - `AGENTS.md` → `## 1. Session start` rules appended only if the block is missing; a
+     missing file is seeded from `AGENTS.md.tpl`. Marked blocks are never re-appended.
+   - `.gitignore` → the `# --- added by remote_opencode_sync ---` patterns appended only if
+     the marker is missing.
+   - `session-logs/` + `.gitkeep` ensured.
+3. On a **desynced** copy (`no-session-sync` opt-out) it refreshes only the committed files
+   (marker/commands) and explicitly skips the `AGENTS.md`/`.gitignore` writes, because
+   those files are skip-worktree-pinned locally and edits would be silently ignored.
+4. Commits `chore: refresh remote_opencode_sync project seed (roe upgrade)` and pushes
+   (`--follow-tags`) when anything changed; otherwise prints "nothing to update" (exit 0).
+
+> **`roe upgrade` (this script) vs `roe update` (`update.sh`):** upgrade refreshes a
+> *project's* seeded files; update upgrades the *toolkit itself*. Typically: `roe update`,
+> then `roe status` to find which projects need `roe upgrade`.
+
+Env: none.
+
 ## `desync.sh` — opt one machine's copy out of sync
 
 ```
@@ -315,6 +417,12 @@ dependencies. Notable functions:
 | `model_get <dir>` | read the pinned model from `opencode.json` (preferred) or `opencode.jsonc` |
 | `model_resolve <requested>` | `--model` → `$MODEL_PIN` → global config → prompt |
 | `model_set <dir> <id>` | pin the model: rewrite in place, inject before the closing brace, or create a minimal `opencode.jsonc`; comment-aware |
+| `project_has_marker <dir>` / `project_desynced <dir>` | the `.opencode/toolkit` marker check and the `no-session-sync` opt-out check (the same answers the plugin uses) |
+| `project_commands_current <dir>` | any opencode config carries the full `resume`/`handoff`/`sync` fallback command set |
+| `project_rules_current <dir>` | `AGENTS.md` carries the sync-rules block (`## 1. Session start` header or the append-block marker) |
+| `project_gitignore_current <dir>` | `.gitignore` carries the `# --- added by remote_opencode_sync ---` marker |
+| `project_seed_stale <dir>` | OR of the three above — exits 0 when the seeded sync layer drifted (drives `roe status` + `roe upgrade`) |
+| `jsonc_inject_block <file> <blockfile>` | comment-aware JSON/JSONC injection of a multi-line block before the final closing brace (the block restore used by `roe upgrade`) |
 | `mf_set` / `mf_keep` / `mf_installed` | key=value uninstall-manifest bookkeeping |
 
 ## Environment variables
@@ -354,6 +462,9 @@ ROE_PROJECTS_TTL=30 roe projects --refresh             # nudge the cache TTL
 - Scripts: `0` on success, `1` on any detected error (missing prereq, collision, bad
   flag, aborted confirmation, scan failure, …). `new-project.sh` also uses `1` when
   `--resolve` is invalid or too few arguments are given.
+- `status.sh` uses the trio: `0` valid + everything current, `1` not a roe project / not
+  a usable git working copy, `2` valid but an action is needed (see the report). This makes
+  `roe status && roe pull` a safe scriptable gate.
 - `roe`: `0` on success; `2` for `roe help`/usage and unknown commands (and `roe model`
   with too many arguments). Anything the `exec`'d script returns passes through.
 - Scripts with `-h/--help` exit `0` when help is printed.

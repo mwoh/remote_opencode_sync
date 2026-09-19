@@ -46,7 +46,7 @@ on this machine, restart it to load the plugin.
 **Updates:** check what you have vs. the latest release first, then update:
 
 ```
-roe version     # "remote_opencode_sync v1.5.6" + latest -> roe update
+roe version     # "remote_opencode_sync v1.5.7" + latest -> roe update
 roe update
 ```
 
@@ -63,7 +63,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.6/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.7/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -83,6 +83,10 @@ need to remember the paths under `~/.local/share/remote_opencode_sync/scripts/` 
 | List your synced projects | `roe projects` | `scripts/projects.sh list` |
 | Clone a synced project | `roe clone <name>` | `scripts/projects.sh clone <name>` |
 | Pin the model used here | `roe model [<id>]` | rewrites the project's `opencode.jsonc` |
+| Check a project's sync state | `roe status [<dir>]` | `scripts/status.sh` — what needs push/pull/upgrade |
+| Pull the latest round in | `roe pull [<dir>]` | `scripts/pull.sh` — fetch + clean rebase |
+| Push committed state out | `roe push [<dir>]` | `scripts/push.sh` |
+| Refresh a project's sync layer | `roe upgrade [<dir>]` | `scripts/upgrade.sh` — non-destructive |
 | Stop this machine syncing a copy | `roe desync` | `scripts/desync.sh` |
 | Undo desync | `roe resync` | `scripts/resync.sh` |
 | Uninstall | `roe uninstall` | `scripts/uninstall.sh` |
@@ -122,18 +126,22 @@ scripts/
   update.sh                 update an already-installed toolkit
   new-project.sh            create or adopt a project (see below; resumable)
   projects.sh               list your synced projects / clone one onto this machine
+  status.sh                 `roe status` — is this a valid project; what does it need?
+  pull.sh                   `roe pull` — fetch + clean rebase (plugin's ritual, manual)
+  push.sh                   `roe push` — push committed state (prevents non-fast-forward)
+  upgrade.sh                `roe upgrade` — non-destructive refresh of a project's seed
   desync.sh                 stop one working copy from syncing (local only)
   resync.sh                 undo a desync
   setup-machine.sh          lazy one-time machine setup
   uninstall.sh              remove what setup created (see below)
-  lib.sh                    shared helpers (placeholder relink, package install/remove, manifest)
+  lib.sh                    shared helpers (placeholder relink, package install/remove, manifest, project seed detection)
 docs/
   machine-setup.md          new-machine checklist (the first step)
   daily-workflow.md         everyday playbook + advanced options
   scripts-reference.md      every script, its options, and how roe wires through
   agent-handoff.md          takeover guide: current state, tests, release process
 tests/
-  features.sh               79-check sandbox e2e (fake gh) — run before any release
+  features.sh               115-check sandbox e2e (fake gh) — run before any release
   model-features.sh         28-check model-helper regression
   plugin-test.mjs           15-check session-sync plugin harness
   shims/gh                  fake `gh` backing the sandbox
@@ -171,8 +179,16 @@ tests/
   marker (`roe projects`, with a short-lived cache) and clone a compatible repo (`roe clone`).
 - **`desync.sh` / `resync.sh`** — per working copy: opt one machine's copy of a project out
   of the sync loop (`roe desync`) and bring it back (`roe resync`). Local-only, never pushed.
+- **`status.sh` / `pull.sh` / `push.sh` / `upgrade.sh`** — `roe status` answers "is this a
+  valid roe project, and what does it need?" (push / pull / diverged / dirty / desynced /
+  seed drift / toolkit update, exiting 0 = current, 2 = action needed, 1 = not a roe
+  project). `roe pull` and `roe push` are manual in/out halves of the sync (pull = fetch +
+  clean rebase, mirroring the plugin's session-start ritual; push refuses a
+  non-fast-forward). `roe upgrade` refreshes an existing project's seed files to the
+  current toolkit — **never overwriting** user content; `roe update` (toolkit itself) and
+  `roe upgrade` (a project) are different actions.
 - **`lib.sh`** — internal helpers (placeholder relink, package install/remove, uninstall
-  manifest); you never call it directly.
+  manifest, model pin, project seed detection); you never call it directly.
 
 In one line: **setup scripts are once per machine**, **`new-project.sh` is once per
 project**, and **the plugin is zero daily**.
@@ -236,9 +252,9 @@ roe setup              # installs the global plugin + git identity (once per mac
 opencode               # AGENTS.md -> docs/agent-handoff.md -> CONTINUE.md = full handoff
 ```
 
-The session-sync plugin pulls/rebase at session start, `wip:`-backs up uncommitted work on
-idle, and injects `CONTINUE.md` into context compaction — in this repo as in any project.
-`tests/features.sh` §I keeps the self-host honest (the 79-check count includes it):
+Here, the session-sync plugin pulls/rebase at session start, `wip:`-backs up uncommitted work
+on idle, and injects `CONTINUE.md` into context compaction — in this repo as in any project.
+`tests/features.sh` §I keeps the self-host honest (the 115-check count includes it):
 if the marker, config commands, `CONTINUE.md`, or rules header are removed, the suite fails.
 
 ## Creating a new project
@@ -369,6 +385,59 @@ You should never *need* them; they're for explicit control and edge cases.
 > sed -i 's/"prompt":/"template":/g' opencode.jsonc
 > ```
 > then commit + push. New projects are unaffected (the template already uses `"template"`).
+
+## Sync state, manual pull/push, and project upgrades
+
+The plugin keeps everything automatic, but its manual, deterministic counterparts are —
+like `git status` — one word away.
+
+**`roe status [<dir>]`** (default: current directory) asks "is this a valid roe project,
+and what does it need right now?" It fetches (read-only) and prints the single most
+useful answer, then the details:
+
+```
+$ roe status
+roe status — /home/me/work/project
+  marker: ok (remote_opencode_sync)
+  state: behind by 3 — run: roe pull
+  pull: 3 commit(s) behind origin/main
+  model: opencode/big-pickle
+  plugin: installed on this machine
+  tracking: origin/main
+```
+
+- **exit 0** — valid project, everything current ("all caught up").
+- **exit 2** — valid project, but an action is needed: `roe push` (ahead), `roe pull`
+  (behind), `git pull --rebase` (diverged), commit (dirty tree), `roe upgrade` (the seeded
+  sync layer drifted from the current toolkit), `roe update` (the toolkit itself is behind),
+  or a desync opt-out note.
+- **exit 1** — not a roe project (missing `.opencode/toolkit` marker) or not a usable git
+  working copy.
+
+**`roe pull` / `roe push`** — the manual in/out halves of the sync. `roe pull` fetches and
+does a clean `pull --rebase`, stashing and restoring any local dirt (exactly the ritual the
+plugin runs at session start); `roe push` pushes committed state and refuses if the remote
+is ahead (it never clobbers work made elsewhere). Run them from inside a project, or pass a
+directory: `roe pull ~/work/project`.
+
+**`roe upgrade [<dir>]`** — refresh an existing project's **sync layer** so it matches the
+current toolkit, non-destructively (it never overwrites your content):
+
+- restores the fallback `resume`/`handoff`/`sync` commands in `opencode.jsonc` **keeping
+  the pinned model** (or seeds a fresh config if none exists);
+- appends the workflow rules to `AGENTS.md` / ignore patterns to `.gitignore` **only if
+  they're missing** (marked blocks are never duplicated or rewritten);
+- refreshes the `.opencode/toolkit` marker and ensures `session-logs/`;
+- pulls first, then commits and pushes the refresh, or says "nothing to update".
+
+> **`roe update` vs `roe upgrade`:** `roe update` upgrades the **toolkit itself** (the
+> scripts + plugin). `roe upgrade` refreshes a **project's** seeded files so it speaks the
+> current toolkit's dialect (newer rules, commands, ignore patterns). You'll usually want
+> both: update the toolkit, then `roe status` to see which projects need an upgrade.
+
+`roe upgrade` refuses to run over uncommitted work (commit or stash first — it never
+bundles your changes) and, on a desynced copy, refreshes only the committed files
+(marker/commands), leaving the skip-worktree AGENTS.md/.gitignore alone.
 
 ## Pinned model
 

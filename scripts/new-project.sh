@@ -268,7 +268,13 @@ already_marked() {
   fi
   # an existing sync-rules block in AGENTS.md also counts as sync content, so a
   # resume of a previous scaffold does not append a duplicate copy of the rules.
-  [[ "$(basename "$file")" == "AGENTS.md" ]] && grep -qE '^## 1\. Session start' "$file"
+  # Accept both the full-template `## 1. Session start` header and the append
+  # block's `<!-- appended by remote_opencode_sync ... -->` marker (see
+  # project_rules_current in lib.sh).
+  [[ "$(basename "$file")" == "AGENTS.md" ]] && (
+    grep -qE '^## 1\. Session start' "$file" ||
+    grep -qF 'appended by remote_opencode_sync' "$file"
+  )
 }
 
 # seed <template>   (target filename = template basename minus .tpl)

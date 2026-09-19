@@ -206,7 +206,7 @@ cd "$ROOT"
 "$ROE/bin/roe" projects > "$ROOT/roep.out" 2>&1
 check "roe projects dispatch works" "$(grep -q 'remote_opencode_sync projects for fakeuser' "$ROOT/roep.out"; echo $?)" ""
 "$ROE/bin/roe" --help > "$ROOT/roeh.out" 2>&1
-check "roe help lists new commands" "$(grep -qE 'projects|clone|desync|resync' "$ROOT/roeh.out"; echo $?)" ""
+check "roe help lists new commands" "$(grep -qE 'projects|clone|desync|resync|status|pull|push|upgrade' "$ROOT/roeh.out"; echo $?)" ""
 
 echo "== I. toolkit repo self-hosts itself =="
 check "repo root carries the toolkit marker" "$([[ -f "$ROE/.opencode/toolkit" && "$(cat "$ROE/.opencode/toolkit")" == "remote_opencode_sync" ]]; echo $?)" ""
@@ -232,6 +232,87 @@ git -C "$ROOT/J/tool" -c user.email=t@t -c user.name=t commit -q --allow-empty -
 git -C "$ROOT/J/tool" tag v1.5.5
 "$ROOT/J/tool/bin/roe" version > "$ROOT/J/ver-ok.out" 2>&1
 check "version reports up to date when current" "$(grep -q 'up to date' "$ROOT/J/ver-ok.out"; echo $?)" ""
+
+echo "== K. roe status / pull / push / upgrade =="
+echo "  K1: status — healthy project, dispatch, model + states"
+mkdir -p "$ROOT/K"
+( cd "$ROOT/K" && "$ROE/scripts/projects.sh" clone alpha > "$ROOT/K/clone.out" 2>&1 )
+"$ROE/bin/roe" status "$ROOT/K/alpha" > "$ROOT/K/stat-ok.out" 2>&1
+expect_exit "roe status (healthy) exits 0" 0 $? "$(tail -n1 "$ROOT/K/stat-ok.out")"
+check "status reports all caught up" "$(grep -q 'all caught up' "$ROOT/K/stat-ok.out"; echo $?)" ""
+check "status reports the pinned model" "$(grep -q 'model: opencode/big-pickle' "$ROOT/K/stat-ok.out"; echo $?)" ""
+mkdir -p "$ROOT/K/plain" && git -C "$ROOT/K/plain" init -q -b main && git -C "$ROOT/K/plain" -c user.email=t@t -c user.name=t commit -q --allow-empty -m x
+"$ROE/scripts/status.sh" "$ROOT/K/plain" > "$ROOT/K/stat-not.out" 2>&1
+expect_exit "status on a non-toolkit dir exits 1" 1 $? "$(tail -n1 "$ROOT/K/stat-not.out")"
+check "status names the missing marker" "$(grep -q 'not a remote_opencode_sync project' "$ROOT/K/stat-not.out"; echo $?)" ""
+
+echo "  K2: ahead -> status flags push; roe push sends it"
+echo push-tile > "$ROOT/K/alpha/step.txt"
+( cd "$ROOT/K/alpha" && git add -A && git -c user.email=t@t -c user.name=t commit -qm k2push )
+"$ROE/scripts/status.sh" "$ROOT/K/alpha" > "$ROOT/K/stat-ahead.out" 2>&1
+expect_exit "status flags an ahead project" 2 $? "$(grep 'state:' "$ROOT/K/stat-ahead.out")"
+check "status recommends roe push when ahead" "$(grep -q 'roe push' "$ROOT/K/stat-ahead.out"; echo $?)" ""
+"$ROE/scripts/push.sh" "$ROOT/K/alpha" > "$ROOT/K/push.out" 2>&1
+expect_exit "roe push exits 0" 0 $? "$(tail -n1 "$ROOT/K/push.out")"
+check "push reports committed count" "$(grep -q 'pushed 1 commit' "$ROOT/K/push.out"; echo $?)" ""
+check "push reached the remote" "$([[ "$(git -C "$ROOT/K/alpha" log --oneline -1)" == "$(remote_head alpha)" ]]; echo $?)" ""
+"$ROE/scripts/status.sh" "$ROOT/K/alpha" > "$ROOT/K/stat-after-push.out" 2>&1
+expect_exit "status is clean again after push" 0 $? "$(tail -n1 "$ROOT/K/stat-after-push.out")"
+
+echo "  K3: behind -> status flags pull; roe pull rebases it in"
+pull_src="$ROOT/K/pull-src"
+mkdir -p "$pull_src" && git clone "$(ssh_url alpha)" "$pull_src/alpha" > "$ROOT/K/pullclone.out" 2>&1
+( cd "$pull_src/alpha" && echo behind-tile > remote.txt && git add -A && git -c user.email=t@t -c user.name=t commit -qm k3pull && git push > "$ROOT/K/pullpush.out" 2>&1 )
+"$ROE/scripts/status.sh" "$ROOT/K/alpha" > "$ROOT/K/stat-behind.out" 2>&1
+expect_exit "status flags a behind project" 2 $? "$(grep 'state:' "$ROOT/K/stat-behind.out")"
+check "status recommends roe pull when behind" "$(grep -q 'roe pull' "$ROOT/K/stat-behind.out"; echo $?)" ""
+"$ROE/scripts/pull.sh" "$ROOT/K/alpha" > "$ROOT/K/pull.out" 2>&1
+expect_exit "roe pull exits 0" 0 $? "$(tail -n1 "$ROOT/K/pull.out")"
+check "pull reports it fetched" "$(grep -q 'pulled' "$ROOT/K/pull.out"; echo $?)" ""
+check "pull leaves the copy at the remote head" "$([[ "$(git -C "$ROOT/K/alpha" log --oneline -1)" == "$(remote_head alpha)" ]]; echo $?)" ""
+check "pull applied the remote file" "$(grep -q behind-tile "$ROOT/K/alpha/remote.txt"; echo $?)" ""
+"$ROE/scripts/status.sh" "$ROOT/K/alpha" > "$ROOT/K/stat-after-pull.out" 2>&1
+expect_exit "status is clean again after pull" 0 $? "$(tail -n1 "$ROOT/K/stat-after-pull.out")"
+
+echo "  K4: dirty tree -> status flags uncommitted work"
+echo dirty-tile > "$ROOT/K/alpha/wip.txt"
+"$ROE/scripts/status.sh" "$ROOT/K/alpha" > "$ROOT/K/stat-dirty.out" 2>&1
+expect_exit "status flags a dirty tree" 2 $? "$(grep 'state:' "$ROOT/K/stat-dirty.out")"
+check "status mentions the uncommitted file" "$(grep -q 'uncommitted' "$ROOT/K/stat-dirty.out"; echo $?)" ""
+rm -f "$ROOT/K/alpha/wip.txt"
+
+echo "  K5: seed drift -> status flags upgrade; roe upgrade restores + pushes"
+sed -i '/^  "command": {/,/^  }$/d' "$ROOT/K/alpha/opencode.jsonc"
+( cd "$ROOT/K/alpha" && git add -A && git -c user.email=t@t -c user.name=t commit -qm "drain commands" )
+"$ROE/scripts/status.sh" "$ROOT/K/alpha" > "$ROOT/K/stat-drift.out" 2>&1
+expect_exit "status flags a drifted seed" 2 $? "$(grep 'seed:' "$ROOT/K/stat-drift.out")"
+check "status recommends roe upgrade" "$(grep -q 'roe upgrade' "$ROOT/K/stat-drift.out"; echo $?)" ""
+"$ROE/bin/roe" upgrade "$ROOT/K/alpha" > "$ROOT/K/up.out" 2>&1
+expect_exit "roe upgrade exits 0" 0 $? "$(tail -n1 "$ROOT/K/up.out")"
+check "upgrade restored the fallback command block" "$(grep -q '"resume"' "$ROOT/K/alpha/opencode.jsonc"; echo $?)" "$(tail -n3 "$ROOT/K/up.out")"
+check "upgrade kept the pinned model" "$(grep -q '"model": "opencode/big-pickle"' "$ROOT/K/alpha/opencode.jsonc"; echo $?)" ""
+check "upgrade commit reached the remote" "$([[ "$(git -C "$ROOT/K/alpha" log --oneline -1)" == "$(remote_head alpha)" ]]; echo $?)" ""
+k6_commits="$(git -C "$ROOT/K/alpha" log --oneline | wc -l | tr -d ' ')"
+"$ROE/scripts/upgrade.sh" "$ROOT/K/alpha" > "$ROOT/K/up2.out" 2>&1
+expect_exit "upgrade is idempotent (nothing to update)" 0 $? "$(tail -n1 "$ROOT/K/up2.out")"
+check "second upgrade says nothing to update" "$(grep -q 'nothing to update' "$ROOT/K/up2.out"; echo $?)" ""
+check "second upgrade created no new commit" "$(test "$k6_commits" = "$(git -C "$ROOT/K/alpha" log --oneline | wc -l | tr -d ' ')"; echo $?)" "k6=$k6_commits now=$(git -C "$ROOT/K/alpha" log --oneline | wc -l | tr -d ' ')"
+
+echo "  K6: upgrade recreates a config-less / AGENTS-less legacy project"
+( cd "$ROOT/K/alpha" && git rm -q opencode.jsonc AGENTS.md && git -c user.email=t@t -c user.name=t commit -qm "legacy, pre-roe" )
+"$ROE/scripts/upgrade.sh" "$ROOT/K/alpha" > "$ROOT/K/up3.out" 2>&1
+expect_exit "upgrade recreates missing seed files" 0 $? "$(tail -n1 "$ROOT/K/up3.out")"
+check "upgrade created opencode.jsonc" "$(grep -q 'created opencode.jsonc' "$ROOT/K/up3.out"; echo $?)" ""
+check "upgrade created AGENTS.md with the rules header" "$(grep -q '^## 1\. Session start' "$ROOT/K/alpha/AGENTS.md"; echo $?)" ""
+check "recreated config carries the command block" "$(grep -q '"resume"' "$ROOT/K/alpha/opencode.jsonc"; echo $?)" ""
+check "recreate commit reached the remote" "$([[ "$(git -C "$ROOT/K/alpha" log --oneline -1)" == "$(remote_head alpha)" ]]; echo $?)" ""
+
+echo "  K7: status on a desynced copy flags the opt-out"
+( cd "$ROOT/K/alpha" && "$ROE/scripts/desync.sh" -y > /dev/null 2>&1 )
+"$ROE/scripts/status.sh" "$ROOT/K/alpha" > "$ROOT/K/stat-desync.out" 2>&1
+expect_exit "status flags a desynced copy" 2 $? "$(grep 'state:\|desynced' "$ROOT/K/stat-desync.out")"
+check "status names the opt-out" "$(grep -q 'desynced on this machine' "$ROOT/K/stat-desync.out"; echo $?)" ""
+( cd "$ROOT/K/alpha" && "$ROE/scripts/resync.sh" > /dev/null 2>&1 )
 
 echo
 echo "features.sh: $OK checks, $FAIL failed"

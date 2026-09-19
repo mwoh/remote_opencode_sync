@@ -8,8 +8,8 @@ detail that took real effort to learn.
 
 ## 1. Current state
 
-- **Latest release: v1.5.6** (tag `v1.5.6`). See the "Release history" table below.
-- Everything described in `PLAN.md`'s roadmap through v1.5.6 is implemented and shipped.
+- **Latest release: v1.5.7** (tag `v1.5.7`). See the "Release history" table below.
+- Everything described in `PLAN.md`'s roadmap through v1.5.7 is implemented and shipped.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -20,6 +20,7 @@ detail that took real effort to learn.
 
 | Tag | Commit essence | Notes |
 |-----|----------------|-------|
+| v1.5.7 | `roe status` / `roe pull` / `roe push` / `roe upgrade` — the sync-state advisory + manual in/out halves of the sync + a non-destructive per-project seed refresh. Shared seed-detection predicates in `lib.sh` (`project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`) and a comment-aware `jsonc_inject_block` restore the fallback commands while keeping the pinned model | features suite 79 → 115 checks (§K) |
 | v1.5.6 | `roe version` reports installed + latest release (git tags; pure bash/awk; offline-graceful; sandbox-tested via fake origin) | features suite 75 → 79 checks |
 | v1.5.5 | the toolkit repo self-hosts its own workflow (marker, config, CONTINUE.md, session logs, rules header) — clone → `roe setup` → `opencode` = full handoff on any machine | features suite 71 → 75 checks (§I guards the self-host markers) |
 | v1.5.4 | adopt hardening (dirty-tree warning, origin-repoint notice, branch/default hint, `--follow-tags`); vendored tests + takeover guide + AGENTS.md; always-release cadence rule | features suite 61 → 71 checks |
@@ -42,9 +43,12 @@ scripts/
   setup-machine.sh      one-time machine setup; writes the uninstall manifest
   new-project.sh        create/adopt a synced project (resumable); seeds templates
   projects.sh           list synced projects (marker-probed) + clone
+  status.sh             `roe status` — valid project? what does it need? (0/2/1 exit)
+  pull.sh / push.sh     manual in/out halves of the sync (stash-safe rebase / non-FF-safe push)
+  upgrade.sh            non-destructive refresh of a project's seed files to the current toolkit
   desync.sh / resync.sh local-only opt-out of sync and its undo
   uninstall.sh          remove only what install created (manifest-driven)
-  lib.sh                shared helpers (model pin, pkg mgr, placeholders, manifest)
+  lib.sh                shared helpers (model pin, pkg mgr, placeholders, manifest, project seed detection, jsonc block inject)
 plugins/
   session-sync.js       global opencode plugin: auto pull/rebase/push/wip (Layer 2)
 templates/
@@ -53,7 +57,7 @@ templates/
 docs/
   machine-setup.md, daily-workflow.md, scripts-reference.md, agent-handoff.md
 tests/                  VENDORED VERIFICATION HARNESSES (see §3)
-  features.sh              sandbox e2e (79 checks) using tests/shims/gh
+  features.sh              sandbox e2e (115 checks) using tests/shims/gh
   model-features.sh        model-helper regression (28 checks)
   plugin-test.mjs          plugin behaviour harness (15 checks)
   shims/gh                 fake `gh` for the sandbox (bare repos under $GH_FAKE_ROOT)
@@ -79,7 +83,7 @@ before any release; the sandbox suites clear fallback automatically.
 
 ```
 cd <repo-root>
-bash tests/features.sh        # 79 checks   (~45s; needs git, python3, node-agnostic)
+bash tests/features.sh        # 115 checks  (~60s; needs git, python3, node-agnostic)
 bash tests/model-features.sh  # 28 checks
 node tests/plugin-test.mjs    # 15 checks   (needs node)
 bash -n scripts/*.sh bin/roe tests/*.sh   # syntax sweep
@@ -136,7 +140,7 @@ separate scratch root (`/tmp/opencode/modeltest`) so it never collides with `fea
 
 Before any release:
 
-1. **Verify**: run all three suites + `bash -n` (§3). All green: features 79, model 28,
+1. **Verify**: run all three suites + `bash -n` (§3). All green: features 115, model 28,
    plugin 15.
 2. **Bump docs** — a version bump updates these **together, in the same commit**:
    - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)
@@ -205,11 +209,12 @@ Before any release:
   with a hint.
 - **`roe` argument injection** (see `docs/scripts-reference.md`): `adopt` forwards
   `--existing <dir>` then your args; `projects`/`clone` forward the subcommand word then
-  your args; `version`/`help`/`model` are handled inline in `bin/roe` (there is no
-  `model.sh`). `roe version` since v1.5.6 appends `latest: …` by `git ls-remote --tags`
-  against the toolkit's origin + `ver_sort_max`/`ver_gt` (awk, `lib.sh`) — update hints
-  only when the remote tag is strictly newer, and offline it prints `latest: unknown`
-  without erroring.
+  your args; `status`/`pull`/`push`/`upgrade` are complete pass-through (one optional
+  target dir, defaulting to the current directory); `version`/`help`/`model` are handled
+  inline in `bin/roe` (there is no `model.sh`). `roe version` since v1.5.6 appends
+  `latest: …` by `git ls-remote --tags` against the toolkit's origin + `ver_sort_max`/
+  `ver_gt` (awk, `lib.sh`) — update hints only when the remote tag is strictly newer,
+  and offline it prints `latest: unknown` without erroring.
 - **Adopt hardening** (`scripts/new-project.sh`): adopting warns when the pre-existing tree
   is dirty and bundles those changes into the import commit (warn-and-continue, captured
   *before* seeding); replacing a foreign `origin` under `--force` names the old URL;
@@ -228,6 +233,27 @@ Before any release:
   ---` marker, and `already_marked()` also accepts an existing `## 1. Session start`
   block in `AGENTS.md` as "already synced". This prevents a duplicate-seed commit when a
   create is interrupted and resumed. Keep both markers in sync if you restructure seeding.
+- **The rules marker has TWO accepted shapes** (lib.sh `project_rules_current`, since
+  v1.5.7): the full template's `## 1. Session start` header **or** the append block's
+  `<!-- appended by remote_opencode_sync … -->` comment — the append block numbers its
+  headings instead of using the header. `new-project.sh`'s `already_marked()` accepts
+  both too. If you only checked the header, `roe status`/`roe upgrade` would loop on any
+  project restored by the append path (duplicate-appending the rules on every upgrade).
+- **`roe status` exit codes**: `0` = valid + everything current, `1` = not a roe project /
+  not a usable git copy, `2` = valid but an action is needed. It is the ONLY script with a
+  trichotomy; everything else is 0/1. Seed drift uses the same `project_seed_stale`
+  predicate as `upgrade.sh`, so status and upgrade can never disagree.
+- **`roe upgrade` is deliberately conservative**: refuses to run over a dirty tree (it
+  never bundles your work into the refresh commit), and on a **desynced** copy skips the
+  `AGENTS.md`/`.gitignore` writes entirely (those files are `--skip-worktree` pinned, so
+  edits would be silently ignored). It also never rewrites a config whose `command` key
+  exists but is incomplete — that is flagged for a manual merge — and never touches a
+  rules/ignore block that is already marked.
+- **`jsonc_inject_block`** (lib.sh, v1.5.7) generalizes the `model_set` comment-aware awk:
+  it inserts a multi-line block before the final closing brace, adding the separator comma
+  to the previous element and respecting trailing `//` comments. `roe upgrade` uses it to
+  restore the fallback command block without a JSON tool; the block itself is extracted at
+  runtime from `templates/opencode.jsonc.tpl` (never duplicated in the script).
 - **Desync** (`scripts/desync.sh`) is strictly local: `.opencode/state/no-session-sync`
   (gitignored) + `git update-index --skip-worktree` pins on the local stripped
   `AGENTS.md` / `.gitignore`. It never commits or pushes. `resync.sh` reverses exactly

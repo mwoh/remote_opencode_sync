@@ -4,6 +4,7 @@
 # paths under ~/.local/share/remote_opencode_sync/scripts/... again.
 #
 #   roe help | version | update | setup | new | adopt | uninstall
+#   roe status | pull | push | upgrade | model | desync | resync
 #
 # roe is installed as a symlink in ~/.local/bin pointing at this file. Because it
 # resolves itself via readlink -f, it always runs the toolkit it came from (even
@@ -26,6 +27,10 @@ SC_NEW="$SCRIPTS/new-project.sh"
 SC_PROJECTS="$SCRIPTS/projects.sh"
 SC_DESYNC="$SCRIPTS/desync.sh"
 SC_RESYNC="$SCRIPTS/resync.sh"
+SC_STATUS="$SCRIPTS/status.sh"
+SC_PULL="$SCRIPTS/pull.sh"
+SC_PUSH="$SCRIPTS/push.sh"
+SC_UPGRADE="$SCRIPTS/upgrade.sh"
 
 usage() {
   cat <<EOF
@@ -43,6 +48,10 @@ Commands:
   projects [name...]   list your GitHub projects that carry sync support (alias: list)
   clone <name>         clone a synced project onto this machine
   model [id]           show the project's pinned model; with id, change it
+  status [dir]         is this a valid roe project, and what does it need (push/pull/upgrade)?
+  pull [dir]           sync a project working copy with the latest round (fetch + rebase)
+  push [dir]           push a project's committed state to its origin
+  upgrade [dir]        refresh a project's sync layer to the current toolkit (non-destructive)
   desync               stop THIS machine's copy of a project from syncing
   resync               undo desync (bring a copy back into the sync loop)
   uninstall [opts]     reverse the install (also removes the roe symlink + PATH line)
@@ -97,6 +106,10 @@ main() {
     clone)       require "$SC_PROJECTS" && exec "$SC_PROJECTS" clone "$@" ;;
     desync)      require "$SC_DESYNC"  && exec "$SC_DESYNC" "$@" ;;
     resync)      require "$SC_RESYNC"  && exec "$SC_RESYNC" "$@" ;;
+    status)      require "$SC_STATUS"  && exec "$SC_STATUS" "$@" ;;
+    pull)        require "$SC_PULL"    && exec "$SC_PULL" "$@" ;;
+    push)        require "$SC_PUSH"    && exec "$SC_PUSH" "$@" ;;
+    upgrade)     require "$SC_UPGRADE" && exec "$SC_UPGRADE" "$@" ;;
     model)
       local pinned pin_file
       if [[ $# -eq 0 ]]; then

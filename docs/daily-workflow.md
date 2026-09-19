@@ -163,6 +163,35 @@ If you're at a natural session boundary, you can also say: "finalize this sessio
 rule #7 (or `/handoff`) writes a clean `LAST SESSION` block, closes the session log with
 `END`, and pushes.
 
+## Checking sync state / manual pull-push-upgrade
+
+The plugin keeps the daily flow automatic, but the deterministic, `git status`-style
+inspection is a `roe` command away (run in a project, or pass a directory):
+
+```
+roe status               # what does this project need right now? (read-only)
+```
+
+It fetches and prints the single most useful state line (exit `0` = all caught up, `2` =
+an action is needed, `1` = not a roe project), then the details — including push/pull
+counts, uncommitted files, a desync opt-out, seed drift, and a stale toolkit:
+
+| Status says | Do this |
+| --- | --- |
+| `state: ahead by N — run: roe push` | `roe push` (push committed state) |
+| `state: behind by N — run: roe pull` | `roe pull` (fetch + clean rebase) |
+| `state: diverged (…)— reconcile with: git pull --rebase` | resolve the rebase (see Conflicts) |
+| `state: N uncommitted change(s)` | commit them (or close the laptop — idle `wip:` catches it) |
+| `desynced on this machine` | intentional — run `roe resync` to rejoin |
+| `seed: drifted — run: roe upgrade` | `roe upgrade` to refresh this project's sync layer |
+| `toolkit: installed X, latest Y — run: roe update` | `roe update` then re-check `roe status` |
+
+`roe pull` / `roe push` mirror the plugin's session-start ritual (stash-safe rebase, and a
+push that refuses to clobber remote work) — manual counterparts to also work fine if the
+plugin isn't installed on a machine. `roe upgrade` refreshes a project's seeded files
+(marker, fallback commands **keeping the pinned model**, missing rules/ignore blocks) from
+the current toolkit, non-destructively — the toolkit itself stays on `roe update`.
+
 ## Explicit commands (manual fallbacks)
 
 Defined per-project in `opencode.jsonc`:
@@ -249,3 +278,6 @@ a network path between them. It complements, not replaces, git sync.
 | Remove the toolkit | `roe uninstall` (or `~/.local/share/remote_opencode_sync/scripts/uninstall.sh`) + answer the questionnaire |
 | Plugin not running | confirm `~/.config/opencode/plugins/session-sync.js` exists; restart opencode — if it was never installed, this machine skipped `roe setup` |
 | New machine, no projects yet | run `roe new <name>` or see what's already synced: `roe projects` then `roe clone <name>` |
+| What does this project need? | `roe status` (push / pull / upgrade / all caught up) |
+| Project's seeded files have drifted (status says `seed: drifted`) | `roe upgrade` refills the missing/old seed files, keeping the model and your content |
+| Toolkit is behind (status says `toolkit: … run: roe update`) | `roe update`, then `roe status` again — projects may now need `roe upgrade` |

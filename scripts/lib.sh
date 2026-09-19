@@ -258,3 +258,108 @@ toolkit_latest_ver() {
   [[ -n "$out" ]] || return 1
   echo "$out"
 }
+
+# --- Project seed detection (roe status / roe upgrade) ----------------------
+# These predicate helpers mirror exactly what new-project.sh seeds and what the
+# plugin/scripts detect by, so "is this toolkit project current?" is the same
+# question everywhere. All take a directory and return 0 for "yes", 1 for "no".
+
+# project_has_marker <dir> — carries the committed .opencode/toolkit marker that
+#   new-project.sh seeds (the canonical "this is a roe project" answer).
+project_has_marker() {
+  [[ -f "$1/.opencode/toolkit" ]] && grep -qF "remote_opencode_sync" "$1/.opencode/toolkit"
+}
+
+# project_desynced <dir> — the local (gitignored) opt-out that desync.sh writes.
+project_desynced() {
+  [[ -f "$1/.opencode/state/no-session-sync" ]]
+}
+
+# project_commands_current <dir> — at least one opencode config carries the full
+#   fallback command set (resume / handoff / sync) that opencode.jsonc.tpl seeds.
+project_commands_current() {
+  local cfg f
+  for cfg in opencode.json opencode.jsonc; do
+    f="$1/$cfg"
+    [[ -f "$f" ]] || continue
+    grep -qE '"resume"[[:space:]]*:' "$f" && \
+    grep -qE '"handoff"[[:space:]]*:' "$f" && \
+    grep -qE '"sync"[[:space:]]*:' "$f" && return 0
+  done
+  return 1
+}
+
+# project_rules_current <dir> — AGENTS.md carries the sync-rules block that marks
+#   a seeded project as current: either the `## 1. Session start` header of the
+#   full AGENTS.md.tpl, or the `<!-- appended by remote_opencode_sync ... -->`
+#   comment that workflow-rules.md.tpl / the append path write. (The append block
+#   numbers its headers instead, so both markers must count or upgrade/status
+#   would loop on a project restored by append.)
+project_rules_current() {
+  grep -qE '^## 1\. Session start' "$1/AGENTS.md" ||
+    grep -qF 'appended by remote_opencode_sync' "$1/AGENTS.md"
+}
+
+# project_gitignore_current <dir> — .gitignore carries the sync-content marker that
+#   .gitignore.append.tpl seeds.
+project_gitignore_current() {
+  grep -qF "# --- added by remote_opencode_sync ---" "$1/.gitignore"
+}
+
+# project_seed_stale <dir> — exits 0 (stale) if ANY part of the seeded sync layer
+#   drifted; used by roe status to recommend `roe upgrade`. Marker itself is
+#   checked separately (its absence means "not a roe project" at all).
+project_seed_stale() {
+  project_commands_current "$1" || return 0
+  project_rules_current "$1" || return 0
+  project_gitignore_current "$1" || return 0
+  return 1
+}
+
+# jsonc_inject_block <file> <blockfile> — comment-aware JSON/JSONC injector
+#   (generalizes the `model_set` insert): inserts the contents of <blockfile>
+#   directly before the file's final closing brace, adding the separator comma
+#   to the previous element (respecting trailing `//` comments, and ignoring
+#   `//` inside quoted strings). <blockfile> is written verbatim. No-ops when the
+#   file has no final `}`/`]`. Used by roe upgrade to restore the fallback
+#   command block without a JSON tool.
+jsonc_inject_block() {
+  local file="$1" blockfile="$2"
+  awk -v blk="$blockfile" '
+    function cmtpos(s,   i, n, ch, in_str) {
+      n = length(s); in_str = 0
+      for (i = 1; i <= n; i++) {
+        ch = substr(s, i, 1)
+        if (in_str) {
+          if (ch == "\\") i++
+          else if (ch == "\"") in_str = 0
+        } else {
+          if (ch == "\"") in_str = 1
+          else if (ch == "/" && substr(s, i + 1, 1) == "/") return i
+        }
+      }
+      return 0
+    }
+    { buf[NR] = $0 }
+    END {
+      for (i = NR; i >= 1; i--) if (buf[i] ~ /[^[:space:]]/) { last = i; break }
+      prev = last - 1
+      while (prev >= 1 && buf[prev] ~ /^[[:space:]]*$/) prev--
+      if (prev >= 1) {
+        cpos = cmtpos(buf[prev])
+        code = (cpos ? substr(buf[prev], 1, cpos - 1) : buf[prev])
+        if (code !~ /,\s*$/) {
+          if (cpos) buf[prev] = substr(buf[prev], 1, cpos - 1) "," substr(buf[prev], cpos)
+          else buf[prev] = buf[prev] ","
+        }
+      }
+      for (i = 1; i <= NR; i++) {
+        if (i == prev) print buf[i]
+        else if (i == last) {
+          while ((getline b < blk) > 0) print b
+          close(blk)
+          print buf[last]
+        } else print buf[i]
+      }
+    }' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+}

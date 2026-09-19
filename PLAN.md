@@ -73,17 +73,21 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `templates/.env.example.tpl` | Reference for secret env vars (real `.env` is gitignored) |
 | `plugins/session-sync.js` | Global zero-touch sync plugin (Layer 2); acts only in projects carrying the `.opencode/toolkit` marker (opt-out: `.opencode/state/no-session-sync`) |
 | `scripts/bootstrap.sh` | One-liner install / update entry point (curl pipe) |
-| `bin/roe` | The `roe` command front-end: a single short command dispatching every script (`update`/`setup`/`new`/`adopt`/`model`/`uninstall`/`version`); symlinked into `~/.local/bin` by setup, resolved via `readlink -f` so it follows updates. `roe version` reports the installed copy vs the latest release tag on its origin (pure `git ls-remote` + awk; no auth/network-beyond-git) |
+| `bin/roe` | The `roe` command front-end: a single short command dispatching every script (`update`/`setup`/`new`/`adopt`/`model`/`status`/`pull`/`push`/`upgrade`/`uninstall`/`version`); symlinked into `~/.local/bin` by setup, resolved via `readlink -f` so it follows updates. `roe version` reports the installed copy vs the latest release tag on its origin (pure `git ls-remote` + awk; no auth/network-beyond-git) |
 | `scripts/update.sh` | Update an already-installed toolkit |
 | `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`, `--model`) |
+| `scripts/status.sh` | `roe status` — read-only advisory: is a directory a valid roe project, and what does it need (push/pull/diverged/dirty/desync/seed-drift/toolkit-update)? Exit 0 current · 1 not a roe project · 2 action needed |
+| `scripts/pull.sh` | `roe pull` — fetch + clean `pull --rebase` with stash/pop (the plugin's session-start ritual, exposed manually) |
+| `scripts/push.sh` | `roe push` — push committed state; refuses a non-fast-forward (never clobbers remote work) |
+| `scripts/upgrade.sh` | `roe upgrade` — non-destructive refresh of a project's seed files to the current toolkit (marker, fallback commands preserving the pinned model, missing rules/ignore blocks, `session-logs/`); pulls first, commits + pushes the refresh, or "nothing to update" |
 | `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key); links `roe` into `~/.local/bin` + PATH; writes the uninstall manifest used by `scripts/uninstall.sh` |
 | `scripts/uninstall.sh` | Reverse of setup: removes only what the install created (per the manifest), per-tool/auth/ssh questionnaire, `--dry-run`/`--yes` |
-| `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest, model pin: `model_resolve`/`model_set`/`model_get`) |
+| `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest, model pin: `model_resolve`/`model_set`/`model_get`, project seed detection: `project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`, comment-aware JSONC block injector: `jsonc_inject_block`) |
 | `docs/machine-setup.md` | First-step checklist for a new machine (what the script does) |
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (79 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+| `tests/` | Vendored verification harnesses: `features.sh` (115 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Workflows
 
@@ -112,6 +116,15 @@ remote's default.
 `roe update` (or re-run the bootstrap curl, or
 `~/.local/share/remote_opencode_sync/scripts/update.sh`) — pull toolkit, re-run setup
 (idempotent), re-link placeholders, restart opencode.
+
+### Project sync state + manual sync (run from any roe project)
+`roe status` is the read-only counterpart to `git status` for the sync itself: it fetches
+and reports whether the project needs a push (`roe push`), a pull (`roe pull`), conflict
+resolution (diverged — `git pull --rebase`), a commit, a `roe upgrade` (seed drift), a
+`roe update` (toolkit behind), or is "all caught up". `roe pull`/`roe push` are the manual
+in/out halves (optional — the plugin does this daily); `roe upgrade` refreshes an existing
+project's seed files to the current toolkit, preserving the pinned model and never
+overwriting user content.
 
 ### New/unseen machine
 - **Stage 1 (once per machine):** `docs/machine-setup.md` or the lazy
@@ -162,5 +175,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.4 (vendored test harnesses + takeover guide + `AGENTS.md` standing instructions; adopt hardening — dirty-tree warning, origin-repoint notice, branch-vs-remote-default hint, `--follow-tags`; always-release cadence rule — features suite 61 → 71 checks, all green)
 - [x] Released v1.5.5 (the toolkit repo self-hosts its own workflow: `.opencode/toolkit` marker, `opencode.jsonc`, `CONTINUE.md`, `session-logs/`, `.gitignore`, `## 1. Session start` rules header — clone anywhere → `roe setup` → `opencode` = full handoff; `tests/features.sh` §I guards the self-host markers — features suite 71 → 75 checks, all green)
 - [x] Released v1.5.6 (`roe version` reports installed + latest release via git tags — pure bash/awk, offline-graceful, sandbox-tested against a fake origin; features suite 75 → 79 checks, all green)
+- [x] Released v1.5.7 (`roe status`/`roe pull`/`roe push`/`roe upgrade` — the sync-state advisory + manual in/out halves + non-destructive project seed refresh; shared project-seed detection helpers in `lib.sh`; features suite 79 → 115 checks, all green)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume
