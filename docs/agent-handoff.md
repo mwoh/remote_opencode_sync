@@ -8,8 +8,8 @@ detail that took real effort to learn.
 
 ## 1. Current state
 
-- **Latest release: v1.5.9** (tag `v1.5.9`). See the "Release history" table below.
-- Everything described in `PLAN.md`'s roadmap through v1.5.9 is implemented and shipped.
+- **Latest release: v1.5.10** (tag `v1.5.10`). See the "Release history" table below.
+- Everything described in `PLAN.md`'s roadmap through v1.5.10 is implemented and shipped.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -20,6 +20,7 @@ detail that took real effort to learn.
 
 | Tag | Commit essence | Notes |
 |-----|----------------|-------|
+| v1.5.10 | fix `roe projects` — `gh repo list` takes the owner **positionally** (`gh repo list "$own"`), not `--owner`; the old form aborted every scan, so `roe projects` always failed with a misleading "network / auth down? / run: roe setup". A failed scan now captures gh's stderr and prints the real `gh:` error, only suggesting `roe setup` when `gh auth status` actually fails; the `gh` shim now mimics real flag parsing (rejects unknown flags like `--owner`) so this class can't slip through | features suite 176 → 177 checks (§F) |
 | v1.5.9 | `roe history` — per-(project × machine) session-history backups. opencode keeps every project's conversations in one local db (`~/.local/share/opencode/opencode.db`), which is *not* in any repo, so deleting it wipes the machine's history. `history.sh backup` reads the db **read-only** and writes a rolling `opencode-history/<host>.jsonl.gz` **inside the repo** (travels via normal sync); `list`/`show` render any machine's archive; `--host`/`OPENCODE_DB` overrides. `/handoff` backs up, `/sync` warns when the archive is missing/>7d. `scripts/history.py` is python3 stdlib only (second AGENTS.md carve-out) | features suite 145 → 176 checks (§M) |
 | v1.5.8 | `roe track` — see/change what a project actually syncs. Because the idle `wip:` snapshot does `git add -A`, `.gitignore` is the true sync boundary; `track` edits only the `# --- added by remote_opencode_sync ---` block. `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 **standard-library only** via a standing AGENTS.md carve-out); `project_root` walk-up in `lib.sh` (also lets status-style scripts accept subdirectories); escape guard | features suite 115 → 145 checks (§L) |
 | v1.5.7 | `roe status` / `roe pull` / `roe push` / `roe upgrade` — the sync-state advisory + manual in/out halves of the sync + a non-destructive per-project seed refresh. Shared seed-detection predicates in `lib.sh` (`project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`) and a comment-aware `jsonc_inject_block` restore the fallback commands while keeping the pinned model | features suite 79 → 115 checks (§K) |
@@ -61,7 +62,7 @@ templates/
 docs/
   machine-setup.md, daily-workflow.md, scripts-reference.md, agent-handoff.md
 tests/                  VENDORED VERIFICATION HARNESSES (see §3)
-  features.sh              sandbox e2e (176 checks) using tests/shims/gh
+  features.sh              sandbox e2e (177 checks) using tests/shims/gh
   model-features.sh        model-helper regression (28 checks)
   plugin-test.mjs          plugin behaviour harness (15 checks)
   shims/gh                 fake `gh` for the sandbox (bare repos under $GH_FAKE_ROOT)
@@ -87,7 +88,7 @@ before any release; the sandbox suites clear fallback automatically.
 
 ```
 cd <repo-root>
-bash tests/features.sh        # 176 checks  (~60s; needs git, python3, node-agnostic)
+bash tests/features.sh        # 177 checks  (~60s; needs git, python3, node-agnostic)
 bash tests/model-features.sh  # 28 checks
 node tests/plugin-test.mjs    # 15 checks   (needs node)
 bash -n scripts/*.sh bin/roe tests/*.sh   # syntax sweep
@@ -121,9 +122,14 @@ Hard-won gotchas (do not "fix" these away):
    runs `git symbolic-ref HEAD refs/heads/main` on the new bare. `features.sh` has a
    `mkbare()` helper for pre-created bares that does the same. Assert bare contents with
    `git --git-dir <bare> log --oneline -1` (HEAD-based), not a hard-coded branch.
-3. **`repo list` hard-fails when `$FAKE_ROOT/$OWNER` is missing** (`gh: API unreachable`,
+3. **`repo list` hard-fails when `$FAKE_ROOT/$OWNER` is missing** (`API unreachable`,
    exit 1). This deliberately exercises the offline/`--refresh` cache-fallback path — an
    empty scan used to "succeed" and overwrite the cache with nothing.
+   **The shim must mirror real gh flag parsing.** `gh repo list` takes its owner
+   *positionally* and has **no `--owner` flag**; the shim now accepts an optional positional
+   owner plus only the known flags (`--source`/`--limit`/`--json`/`--template`/…) and exits 1
+   on anything else. A permissive shim hid a live `roe projects` failure (fixed v1.5.10) —
+   when adding a shimmed command, reject unknown flags the way the real CLI does.
 4. Optional `<name>.git.roe-meta` files set `private=` / `archived=` / `description=`
    metadata for the fake `repo list`.
 5. **The plugin fires fire-and-forget events**: `void syncStart()` / `void syncIdle()`.
@@ -154,7 +160,7 @@ separate scratch root (`/tmp/opencode/modeltest`) so it never collides with `fea
 
 Before any release:
 
-1. **Verify**: run all three suites + `bash -n` (§3). All green: features 176, model 28,
+1. **Verify**: run all three suites + `bash -n` (§3). All green: features 177, model 28,
    plugin 15.
 2. **Bump docs** — a version bump updates these **together, in the same commit**:
    - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)

@@ -236,7 +236,9 @@ the JSON).
   `owner=`, `fetched_at=`, then tab-separated rows.
 - `--refresh` forces a rescan. An optional `name...` filters by substring.
 - Offline fallback: if a live scan fails but a cache exists, it shows the cached rows
-  with a note; with no cache at all it errors (`roe setup` to fix auth).
+  with a note; with no cache at all it errors, printing the underlying `gh:` stderr line.
+  It suggests `roe setup` **only** when `gh auth status` actually fails, so a non-auth
+  failure (network drop, bad flag) isn't misdiagnosed as an auth problem.
 
 ### `clone`
 - Verifies the `owner/name` carries the marker before touching anything.

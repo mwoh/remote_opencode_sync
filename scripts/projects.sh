@@ -21,6 +21,7 @@ source "$SCRIPT_DIR/lib.sh"
 CACHE_TTL="${ROE_PROJECTS_TTL:-900}"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/remote_opencode_sync"
 CACHE_FILE="$CACHE_DIR/projects.json"
+SCAN_ERR=""
 
 usage() {
   cat <<EOF
@@ -61,10 +62,10 @@ repo_synced() {
 #   name<TAB>private<TAB>archived<TAB>synced<TAB>description
 scan() {
   local own="$1"
-  gh repo list --owner "$own" --source --limit 1000 \
+  gh repo list "$own" --source --limit 1000 \
     --json name,isPrivate,isArchived,description \
     --template '{{range .}}{{.name}}	{{.isPrivate}}	{{.isArchived}}	{{or .description ""}}{{"\n"}}{{end}}' \
-    2>/dev/null | while IFS=$'\t' read -r name priv arch desc; do
+    | while IFS=$'\t' read -r name priv arch desc; do
     [[ -z "$name" ]] && continue
     if repo_synced "$own" "$name"; then synced="yes"; else synced="no"; fi
     printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$priv" "$arch" "$synced" "$desc"
@@ -85,12 +86,15 @@ cached_rows() {
 }
 
 refresh_cache() {
-  local own="$1"
+  local own="$1" err
   mkdir -p "$CACHE_DIR"
-  if ! scan "$own" > "$CACHE_FILE.tmp.$$" 2>/dev/null; then
-    rm -f "$CACHE_FILE.tmp.$$"
+  err="$(mktemp "$CACHE_DIR/scan.err.XXXXXX")"
+  if ! scan "$own" > "$CACHE_FILE.tmp.$$" 2>"$err"; then
+    SCAN_ERR="$(sed -n '1p' "$err" 2>/dev/null || true)"
+    rm -f "$CACHE_FILE.tmp.$$" "$err"
     return 1
   fi
+  rm -f "$err"
   {
     printf '# remote_opencode_sync projects scan\n'
     printf 'owner=%s\n' "$own"
@@ -119,9 +123,13 @@ list_cmd() {
     if ! refresh_cache "$own"; then
       if [[ -s "$CACHE_FILE" ]]; then
         echo "  note: live scan failed — showing cached results" >&2
+        if [[ -n "$SCAN_ERR" ]]; then echo "  gh: $SCAN_ERR" >&2; fi
       else
-        echo "error: could not scan GitHub (network / auth down?)" >&2
-        echo "  fix auth: run: roe setup" >&2
+        echo "error: could not scan GitHub" >&2
+        if [[ -n "$SCAN_ERR" ]]; then echo "  gh: $SCAN_ERR" >&2; fi
+        if ! gh auth status >/dev/null 2>&1; then
+          echo "  fix auth: run: roe setup" >&2
+        fi
         return 1
       fi
     else

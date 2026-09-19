@@ -46,7 +46,7 @@ on this machine, restart it to load the plugin.
 **Updates:** check what you have vs. the latest release first, then update:
 
 ```
-roe version     # "remote_opencode_sync v1.5.9" + latest -> roe update
+roe version     # "remote_opencode_sync v1.5.10" + latest -> roe update
 roe update
 ```
 
@@ -63,7 +63,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.9/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.10/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -148,7 +148,7 @@ docs/
   scripts-reference.md      every script, its options, and how roe wires through
   agent-handoff.md          takeover guide: current state, tests, release process
 tests/
-  features.sh               176-check sandbox e2e (fake gh) — run before any release
+  features.sh               177-check sandbox e2e (fake gh) — run before any release
   model-features.sh         28-check model-helper regression
   plugin-test.mjs           15-check session-sync plugin harness
   shims/gh                  fake `gh` backing the sandbox
@@ -268,7 +268,7 @@ opencode               # AGENTS.md -> docs/agent-handoff.md -> CONTINUE.md = ful
 
 Here, the session-sync plugin pulls/rebase at session start, `wip:`-backs up uncommitted work
 on idle, and injects `CONTINUE.md` into context compaction — in this repo as in any project.
-`tests/features.sh` §I keeps the self-host honest (the 176-check count includes it):
+`tests/features.sh` §I keeps the self-host honest (the 177-check count includes it):
 if the marker, config commands, `CONTINUE.md`, or rules header are removed, the suite fails.
 
 ## Creating a new project

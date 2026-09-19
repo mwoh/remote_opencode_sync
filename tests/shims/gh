@@ -65,7 +65,20 @@ case "$1" in
     sub="$2"; shift 2
     case "$sub" in
       list)
-        [[ -d "${FAKE_ROOT}/${OWNER}" ]] || { printf 'gh: API unreachable\n' >&2; exit 1; }
+        # Mimic real `gh repo list [<owner>] [flags]`: an optional positional owner
+        # plus known flags — anything else (notably `--owner`) is an error, the way
+        # real gh rejects it. Keep in sync with the flags projects.sh passes.
+        while (($#)); do
+          case "$1" in
+            --source|--fork|--archived|--no-archived) : ;;
+            --limit|--visibility|--language|--topic|--json|--template) shift ;;
+            --*=*) : ;;
+            -*) printf 'unknown flag: %s\n' "$1" >&2; exit 1 ;;
+            *) : ;;  # positional <owner>
+          esac
+          shift
+        done
+        [[ -d "${FAKE_ROOT}/${OWNER}" ]] || { printf 'API unreachable\n' >&2; exit 1; }
         for bare in "${FAKE_ROOT}/${OWNER}"/*.git; do
           [[ -d "$bare" ]] || continue
           name="$(basename "$bare")"; name="${name%.git}"

@@ -91,7 +91,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (176 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+| `tests/` | Vendored verification harnesses: `features.sh` (177 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Workflows
 
@@ -200,5 +200,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.7 (`roe status`/`roe pull`/`roe push`/`roe upgrade` — the sync-state advisory + manual in/out halves + non-destructive project seed refresh; shared project-seed detection helpers in `lib.sh`; features suite 79 → 115 checks, all green)
 - [x] Released v1.5.8 (`roe track` — see and change what a project syncs: tracked/untracked/ignored via the roe-owned `.gitignore` block, `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 standard library only), `project_root` walk-up in `lib.sh`, escape guard; features suite 115 → 145 checks (§L), all green)
 - [x] Released v1.5.9 (`roe history` — per-(project × machine) session-history backups: read-only export of opencode's db into `opencode-history/<host>.jsonl.gz` inside the repo (`scripts/history.py`, python3 standard library only) + `backup`/`list`/`show` bash front-end, `OPENCODE_DB` override, `project_root` walk-up; `/handoff` backs up and `/sync` warns when the archive is missing/stale; because archives are full transcripts, this public repo gitignores `opencode-history/` and `backup` prints a "will NOT sync" note when ignored — M9 test; features suite 145 → 176 checks (§M), all green)
+- [x] Released v1.5.10 (fix `roe projects` — `gh repo list` takes the owner positionally, not `--owner`; failed scans now surface the real `gh:` error and only suggest `roe setup` when auth is actually down; the `gh` shim mirrors real flag parsing so the class can't regress; features suite 176 → 177 checks (§F), all green)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume

@@ -155,6 +155,7 @@ expect_exit "projects list exits 0" 0 $? "$(tail -n2 "$ROOT/F/list.out")"
 check "lists alpha" "$(grep -q '^alpha' "$ROOT/F/list.out"; echo $?)" ""
 check "lists plain1" "$(grep -q '^plain1' "$ROOT/F/list.out"; echo $?)" ""
 check "reports synced count" "$(grep -qE '[0-9]+ synced of [0-9]+' "$ROOT/F/list.out"; echo $?)" ""
+check "scan passes owner positionally (gh repo list has no --owner)" "$(grep -q 'repo list "$own"' "$ROE/scripts/projects.sh"; echo $?)" ""
 ( cd "$ROOT/F" && "$ROE/scripts/projects.sh" list alpha > "$ROOT/F/filt.out" 2>&1 )
 check "substring filter narrows to alpha" "$(grep -q '^alpha' "$ROOT/F/filt.out"; echo $?)" ""
 check "filtered list omits plain1" "$(! grep -q plain1 "$ROOT/F/filt.out"; echo $?)" ""
