@@ -80,14 +80,16 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `scripts/pull.sh` | `roe pull` — fetch + clean `pull --rebase` with stash/pop (the plugin's session-start ritual, exposed manually) |
 | `scripts/push.sh` | `roe push` — push committed state; refuses a non-fast-forward (never clobbers remote work) |
 | `scripts/upgrade.sh` | `roe upgrade` — non-destructive refresh of a project's seed files to the current toolkit (marker, fallback commands preserving the pinned model, missing rules/ignore blocks, `session-logs/`); pulls first, commits + pushes the refresh, or "nothing to update" |
+| `scripts/track.sh` | `roe track` — see/change what a project syncs. Because the plugin's wip snapshot does `git add -A`, `.gitignore` is the true sync boundary; this edits only the `# --- added by remote_opencode_sync ---` block. `--list` (tracked / untracked-but-synced / ignored), `--ignore` (append pattern, + `git rm --cached` if tracked), `--unignore` (remove pattern, + `git add`); project resolved by `project_root` walk-up; escaping paths refused |
+| `scripts/track_tui.py` | curses TUI for `roe track` — python3 **standard-library only** (`curses`), a thin presentation layer that shells back to `track.sh` flags (the single source of truth); falls back to the text report when python3/`curses` is unavailable or not a terminal |
 | `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key); links `roe` into `~/.local/bin` + PATH; writes the uninstall manifest used by `scripts/uninstall.sh` |
 | `scripts/uninstall.sh` | Reverse of setup: removes only what the install created (per the manifest), per-tool/auth/ssh questionnaire, `--dry-run`/`--yes` |
-| `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest, model pin: `model_resolve`/`model_set`/`model_get`, project seed detection: `project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`, comment-aware JSONC block injector: `jsonc_inject_block`) |
+| `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest, model pin: `model_resolve`/`model_set`/`model_get`, project seed detection: `project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`/`project_root`, comment-aware JSONC block injector: `jsonc_inject_block`) |
 | `docs/machine-setup.md` | First-step checklist for a new machine (what the script does) |
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (115 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+| `tests/` | Vendored verification harnesses: `features.sh` (145 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Workflows
 
@@ -125,6 +127,15 @@ resolution (diverged — `git pull --rebase`), a commit, a `roe upgrade` (seed d
 in/out halves (optional — the plugin does this daily); `roe upgrade` refreshes an existing
 project's seed files to the current toolkit, preserving the pinned model and never
 overwriting user content.
+
+### Sync scope (`roe track`)
+Because the idle `wip:` snapshot commits everything git would add, what a project syncs is
+decided by `.gitignore`. `roe track` surfaces that decision and edits only the
+`remote_opencode_sync`-managed block: keep a file syncing (default — everything not
+ignored), stop it (`--ignore`, appending the pattern and `git rm --cached` when tracked),
+or let it back in (`--unignore`, removing the pattern and re-adding). Works from any
+subdirectory via the `project_root` walk-up; paths that escape the project root are
+refused. The interactive TUI (`scripts/track_tui.py`) is python3 stdlib `curses` only.
 
 ### New/unseen machine
 - **Stage 1 (once per machine):** `docs/machine-setup.md` or the lazy
@@ -176,5 +187,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.5 (the toolkit repo self-hosts its own workflow: `.opencode/toolkit` marker, `opencode.jsonc`, `CONTINUE.md`, `session-logs/`, `.gitignore`, `## 1. Session start` rules header — clone anywhere → `roe setup` → `opencode` = full handoff; `tests/features.sh` §I guards the self-host markers — features suite 71 → 75 checks, all green)
 - [x] Released v1.5.6 (`roe version` reports installed + latest release via git tags — pure bash/awk, offline-graceful, sandbox-tested against a fake origin; features suite 75 → 79 checks, all green)
 - [x] Released v1.5.7 (`roe status`/`roe pull`/`roe push`/`roe upgrade` — the sync-state advisory + manual in/out halves + non-destructive project seed refresh; shared project-seed detection helpers in `lib.sh`; features suite 79 → 115 checks, all green)
+- [x] Released v1.5.8 (`roe track` — see and change what a project syncs: tracked/untracked/ignored via the roe-owned `.gitignore` block, `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 standard library only), `project_root` walk-up in `lib.sh`, escape guard; features suite 115 → 145 checks (§L), all green)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume

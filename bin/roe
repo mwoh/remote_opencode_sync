@@ -4,7 +4,7 @@
 # paths under ~/.local/share/remote_opencode_sync/scripts/... again.
 #
 #   roe help | version | update | setup | new | adopt | uninstall
-#   roe status | pull | push | upgrade | model | desync | resync
+#   roe status | pull | push | upgrade | track | model | desync | resync
 #
 # roe is installed as a symlink in ~/.local/bin pointing at this file. Because it
 # resolves itself via readlink -f, it always runs the toolkit it came from (even
@@ -31,6 +31,7 @@ SC_STATUS="$SCRIPTS/status.sh"
 SC_PULL="$SCRIPTS/pull.sh"
 SC_PUSH="$SCRIPTS/push.sh"
 SC_UPGRADE="$SCRIPTS/upgrade.sh"
+SC_TRACK="$SCRIPTS/track.sh"
 
 usage() {
   cat <<EOF
@@ -52,6 +53,7 @@ Commands:
   pull [dir]           sync a project working copy with the latest round (fetch + rebase)
   push [dir]           push a project's committed state to its origin
   upgrade [dir]        refresh a project's sync layer to the current toolkit (non-destructive)
+  track [dir]          see what a project syncs (tracked/untracked/ignored) and change it (TUI)
   desync               stop THIS machine's copy of a project from syncing
   resync               undo desync (bring a copy back into the sync loop)
   uninstall [opts]     reverse the install (also removes the roe symlink + PATH line)
@@ -110,6 +112,7 @@ main() {
     pull)        require "$SC_PULL"    && exec "$SC_PULL" "$@" ;;
     push)        require "$SC_PUSH"    && exec "$SC_PUSH" "$@" ;;
     upgrade)     require "$SC_UPGRADE" && exec "$SC_UPGRADE" "$@" ;;
+    track)       require "$SC_TRACK"   && exec "$SC_TRACK" "$@" ;;
     model)
       local pinned pin_file
       if [[ $# -eq 0 ]]; then

@@ -314,6 +314,83 @@ expect_exit "status flags a desynced copy" 2 $? "$(grep 'state:\|desynced' "$ROO
 check "status names the opt-out" "$(grep -q 'desynced on this machine' "$ROOT/K/stat-desync.out"; echo $?)" ""
 ( cd "$ROOT/K/alpha" && "$ROE/scripts/resync.sh" > /dev/null 2>&1 )
 
+echo "== L. roe track — see and change what a project syncs =="
+L="$ROOT/L"
+check "track_tui.py compiles (python3 stdlib only)" "$(python3 -m py_compile "$ROE/scripts/track_tui.py" 2>/dev/null; echo $?)" ""
+mkdir -p "$L/proj/dir" "$L/proj/.opencode" "$L/proj/node_modules"
+( cd "$L/proj" && git init -q -b main )
+printf 'remote_opencode_sync\n' > "$L/proj/.opencode/toolkit"
+( cd "$L/proj" && git add .opencode/toolkit && git -c user.email=t@t -c user.name=t commit -qm init )
+echo tracked > "$L/proj/tracked.txt"
+( cd "$L/proj" && git add tracked.txt && git -c user.email=t@t -c user.name=t commit -qm add-tracked )
+echo fresh > "$L/proj/new.txt"
+echo pkg > "$L/proj/node_modules/pkg.js"
+printf 'node_modules/\n' > "$L/proj/.gitignore"   # a USER rule, outside the roe block
+TRACK="$ROE/scripts/track.sh"
+
+echo "  L1: walk-up from a subdir resolves the project root"
+( cd "$L/proj/dir" && "$TRACK" --list . ) > "$L/l1.out" 2>&1
+check "track walk-up resolves the root" "$(grep -q "Project: proj @ $L/proj" "$L/l1.out"; echo $?)" "$(head -n1 "$L/l1.out")"
+
+echo "  L2: --list shows the three states"
+"$TRACK" --list "$L/proj" > "$L/l2.out" 2>&1
+check "tracked pane lists a committed file" "$(grep -q '^T	tracked.txt' "$L/l2.out"; echo $?)" ""
+check "untracked pane lists a fresh file" "$(grep -q '^U	new.txt' "$L/l2.out"; echo $?)" ""
+check "ignored pane lists a user-rule file" "$(grep -q '^I	node_modules/pkg.js' "$L/l2.out"; echo $?)" ""
+
+echo "  L3: roe track dispatch + TUI fallback off a terminal"
+"$ROE/bin/roe" track --list "$L/proj" > "$L/l3.out" 2>&1
+expect_exit "roe track --list dispatches" 0 $? "$(tail -n1 "$L/l3.out")"
+check "roe track names the project" "$(grep -q 'Project: proj @' "$L/l3.out"; echo $?)" ""
+"$ROE/bin/roe" track "$L/proj" < /dev/null > "$L/l3b.out" 2>&1
+expect_exit "roe track falls back to a text report off a TTY" 0 $? "$(tail -n1 "$L/l3b.out")"
+check "fallback report lists tracked files" "$(grep -q 'tracked.txt' "$L/l3b.out"; echo $?)" ""
+
+echo "  L4: ignore an untracked file -> moves it to the ignored pane"
+"$TRACK" --ignore new.txt --dir "$L/proj" > "$L/l4.out" 2>&1
+expect_exit "ignore untracked exits 0" 0 $? "$(tail -n1 "$L/l4.out")"
+check "ignore reports the added pattern" "$(grep -q 'pattern .new.txt. added to the roe block' "$L/l4.out"; echo $?)" "$(tail -n1 "$L/l4.out")"
+"$TRACK" --list "$L/proj" > "$L/l4b.out" 2>&1
+check "file now sits in the ignored pane" "$(grep -q '^I	new.txt' "$L/l4b.out"; echo $?)" ""
+if grep -q '^U	new.txt' "$L/l4b.out"; then f "file still in the untracked pane"; else t; echo "  ok ${OK}  file no longer in the untracked pane"; fi
+
+echo "  L5: ignore a tracked file -> untracks (git rm --cached) but keeps it on disk"
+"$TRACK" --ignore tracked.txt --dir "$L/proj" > "$L/l5.out" 2>&1
+expect_exit "ignore tracked exits 0" 0 $? "$(tail -n1 "$L/l5.out")"
+check "softer says removed from tracking" "$(grep -q 'removed from tracking (git rm --cached)' "$L/l5.out"; echo $?)" ""
+check "file still exists on disk" "$([[ -f "$L/proj/tracked.txt" ]]; echo $?)" ""
+check "file no longer in git index" "$([[ -z "$(git -C "$L/proj" ls-files tracked.txt)" ]]; echo $?)" "$(git -C "$L/proj" ls-files tracked.txt)"
+
+echo "  L6: re-ignore is idempotent"
+"$TRACK" --ignore new.txt --dir "$L/proj" > "$L/l6.out" 2>&1
+expect_exit "re-ignore exits 0" 0 $? "$(tail -n1 "$L/l6.out")"
+check "re-ignore says already ignored" "$(grep -q 'already ignored' "$L/l6.out"; echo $?)" ""
+check "pattern added exactly once" "$([[ "$(grep -c '^new.txt$' "$L/proj/.gitignore")" == "1" ]]; echo $?)" "$(grep -c '^new.txt$' "$L/proj/.gitignore")"
+
+echo "  L7: unignore restores a file to the sync set"
+"$TRACK" --unignore new.txt --dir "$L/proj" > "$L/l7.out" 2>&1
+expect_exit "unignore exits 0" 0 $? "$(tail -n1 "$L/l7.out")"
+check "unignore removed the pattern" "$(grep -q 'rule removed from the roe block' "$L/l7.out"; echo $?)" "$(tail -n1 "$L/l7.out")"
+"$TRACK" --list "$L/proj" > "$L/l7b.out" 2>&1
+check "file is tracked (re-added) again" "$(grep -q '^T	new.txt' "$L/l7b.out"; echo $?)" ""
+
+echo "  L8: a rule outside the roe block is never touched"
+"$TRACK" --unignore node_modules/pkg.js --dir "$L/proj" > "$L/l8.out" 2>&1
+expect_exit "unignore of a user rule exits 1" 1 $? "$(tail -n1 "$L/l8.out")"
+check "refusal names the roe block" "$(grep -q 'outside the roe block' "$L/l8.out"; echo $?)" ""
+check "user rule left intact" "$(grep -q '^node_modules/$' "$L/proj/.gitignore"; echo $?)" ""
+
+echo "  L9: paths outside the project root are refused"
+"$TRACK" --ignore ../../escape.txt --dir "$L/proj" > "$L/l9.out" 2>&1
+expect_exit "escaping path exits 1" 1 $? "$(tail -n1 "$L/l9.out")"
+check "refusal names the project root" "$(grep -q 'outside the project root' "$L/l9.out"; echo $?)" ""
+
+echo "  L10: not a roe project is refused"
+mkdir -p "$L/plain" && git -C "$L/plain" init -q -b main
+"$TRACK" --list "$L/plain" > "$L/l10.out" 2>&1
+expect_exit "track on a non-roe dir exits 1" 1 $? "$(tail -n1 "$L/l10.out")"
+check "refusal names the marker" "$(grep -q 'not a remote_opencode_sync project' "$L/l10.out"; echo $?)" ""
+
 echo
 echo "features.sh: $OK checks, $FAIL failed"
 exit $((FAIL ? 1 : 0))

@@ -35,6 +35,8 @@ even after you clone the repo elsewhere. `roe update` keeps that copy current.
 | `pull.sh`                  | `roe pull [<dir>]`         | fetch + clean rebase (manual pull) |
 | `push.sh`                  | `roe push [<dir>]`         | push committed state (refuses non-fast-forward) |
 | `upgrade.sh`               | `roe upgrade [<dir>]`      | non-destructive refresh of a project's seed files |
+| `track.sh`                 | `roe track [<dir>]`        | see/change what a project syncs (list / ignore / unignore / TUI) |
+| `track_tui.py`             | (invoked by `track.sh`)    | curses TUI for `roe track` (python3 stdlib only) |
 | `desync.sh`                | `roe desync`               | freeze one working copy out of sync |
 | `resync.sh`                | `roe resync`               | undo a desync |
 | `uninstall.sh`             | `roe uninstall`            | remove the toolkit + what setup created |
@@ -57,17 +59,20 @@ update)      require "$SC_UPDATE"       && exec "$SC_UPDATE"     "$@" ;;
 status)      require "$SC_STATUS"       && exec "$SC_STATUS"     "$@" ;;
 pull)        require "$SC_PULL"         && exec "$SC_PULL"       "$@" ;;
 push)        require "$SC_PUSH"         && exec "$SC_PUSH"       "$@" ;;
-upgrade)     require "$SC_UPGRADE"      && exec "$SC_UPGRADE"    "$@" ;;
+upgrade)     require "$SC_UPGRADE"    && exec "$SC_UPGRADE"    "$@" ;;
+track)       require "$SC_TRACK"     && exec "$SC_TRACK"      "$@" ;;
 uninstall)   require "$SC_UNINSTALL"    && exec "$SC_UNINSTALL"  "$@" ;;
 ```
 
 There are only three shapes of argument handling to keep in mind:
 
 1. **Complete pass-through** — `roe new`, `roe setup`, `roe update`, `roe status`,
-   `roe pull`, `roe push`, `roe upgrade`, `roe desync`, `roe resync`, `roe uninstall`
-   forward `"$@"` unchanged. Anything the script accepts, `roe` accepts identically,
-   including `--help`. The four sync commands take one optional argument — the project
-   directory, defaulting to the current directory (`roe status ~/work/project`).
+   `roe pull`, `roe push`, `roe upgrade`, `roe track`, `roe desync`, `roe resync`,
+   `roe uninstall` forward `"$@"` unchanged. Anything the script accepts, `roe` accepts
+   identically, including `--help`. The five sync commands take one optional argument —
+   the project directory, defaulting to the current directory (`roe status ~/work/project`);
+   `roe track` also resolves the project by walking up to the marker, so it works from any
+   subdirectory.
 
 2. **A fixed prefix injected by `roe`** — three commands prepend a word before
    forwarding your args:
@@ -333,6 +338,68 @@ work). Sequence:
 
 Env: none.
 
+## `track.sh` + `track_tui.py` — see and change what a project syncs
+
+```
+roe track [<dir>]                          # interactive curses TUI (default: cwd)
+roe track --list [<dir>]                   # three plain lists (pure bash, no python)
+roe track --ignore <path>... [--dir <dir>] # stop <path> syncing
+roe track --unignore <path>... [--dir <dir>] # let <path> sync again
+```
+
+Why this exists: the idle `wip:` snapshot does `git add -A` (see `plugins/session-sync.js`),
+so **`.gitignore` is the real boundary of "what syncs"** — any file not ignored is already
+part of the sync, anywhere in a working copy. `roe track` makes that boundary explicit and
+editable across the three states:
+
+| State | Meaning | `roe track` action |
+|-------|---------|--------------------|
+| **Tracked** | committed in history, synced | *ignore* → append the pattern to the roe `.gitignore` block + `git rm --cached` (the file stays on disk, it just stops syncing) |
+| **Untracked, not ignored** | not committed yet, but will sync on the next `wip:` snapshot | *ignore* → append the pattern to the roe block |
+| **Ignored** | never syncs | *unignore* → remove the matching pattern from the roe block (re-adds the file if it exists) |
+
+Key behaviours:
+
+- **It only ever edits the `# --- added by remote_opencode_sync ---` block of the
+  project's `.gitignore`.** Ignore rules the project's author wrote themselves (anywhere
+  else in the file) are reported but never touched.
+- **Project resolution walks up** from `<dir>`/the current directory to the nearest
+  `.opencode/toolkit` marker (`lib.sh` `project_root`) — run it from any subdirectory of a
+  project, and the TUI header shows `project: <basename> · root: <abs-path>` so there's no
+  doubt what you're editing.
+- **Paths are project-root-relative and escape-proof:** a flagged path is resolved against
+  the project root and `...`/absolute paths that leave it are refused (exit 1).
+- **Idempotent:** re-ignoring an already-ignored file is a no-op; no duplicate patterns.
+- **Changes stay uncommitted.** They travel via the normal flow (your next commit or the
+  idle `wip:` snapshot), at which point the `.gitignore` rule propagates to every machine.
+  Caveat (printed in the TUI): gitignore never un-tracks *historical* files on its own — a
+  file already in history on another machine stays "tracked" there until the next pull
+  re-applies the rule.
+- The bare `roe track` runs the **curses TUI** (`track_tui.py`) when stdin/stdout are a
+  terminal and python3 std. `curses` is present; otherwise it prints the same `--list`
+report and exits 0. The TUI is a thin presentation layer — all mutation shells back to
+`track.sh` flags, which are the only tested/scriptable surface.
+
+The `track_tui.py` TUI: three panes (Tracked / Untracked / Ignored) with per-pane counts,
+`Tab`/`1`/`2`/`3` to switch, `↑`/`↓`/`j`/`k` to move (page with `PgUp`/`PgDn` or `b`/`f`),
+`Enter`/`Space` to ignore/unignore, `r` to refresh, `h`/`?` help, `q`/`Esc` to quit;
+resizes (`KEY_RESIZE`) and color pairs are handled. python3 **standard library only**
+(no pip packages).
+
+| Option | Meaning |
+|--------|---------|
+| `[<dir>]` | project to act on (default: current dir; walked up to the marker). For the TUI/`--list` |
+| `--list` | print the three lists (used by the TUI and usable as the python-free fallback) |
+| `--ignore <path>…` | stop each path syncing (append roe-block pattern; `git rm --cached` if tracked) |
+| `--unignore <path>…` | let each path sync again (remove roe-block rule; `git add` if it exists) |
+| `--dir <dir>` | explicit project directory for `--ignore`/`--unignore` (paths there are root-relative) |
+| `-h`, `--help` | usage |
+
+Exit codes: `0` success/no-op; `1` not a roe project, not a git work tree, a path escaped
+the root, or a `--unignore` asked to modify a rule outside the roe block.
+
+Env: none.
+
 ## `desync.sh` — opt one machine's copy out of sync
 
 ```
@@ -418,6 +485,7 @@ dependencies. Notable functions:
 | `model_resolve <requested>` | `--model` → `$MODEL_PIN` → global config → prompt |
 | `model_set <dir> <id>` | pin the model: rewrite in place, inject before the closing brace, or create a minimal `opencode.jsonc`; comment-aware |
 | `project_has_marker <dir>` / `project_desynced <dir>` | the `.opencode/toolkit` marker check and the `no-session-sync` opt-out check (the same answers the plugin uses) |
+| `project_root <dir>` | walk up from `<dir>` to the nearest `.opencode/toolkit` marker and echo its absolute path (drives `roe track` from any subdirectory) |
 | `project_commands_current <dir>` | any opencode config carries the full `resume`/`handoff`/`sync` fallback command set |
 | `project_rules_current <dir>` | `AGENTS.md` carries the sync-rules block (`## 1. Session start` header or the append-block marker) |
 | `project_gitignore_current <dir>` | `.gitignore` carries the `# --- added by remote_opencode_sync ---` marker |
@@ -465,6 +533,8 @@ ROE_PROJECTS_TTL=30 roe projects --refresh             # nudge the cache TTL
 - `status.sh` uses the trio: `0` valid + everything current, `1` not a roe project / not
   a usable git working copy, `2` valid but an action is needed (see the report). This makes
   `roe status && roe pull` a safe scriptable gate.
+- `track.sh` uses `0` success/no-op and `1` for not-a-roe-project / not-a-git-work-tree /
+  escape / outside-the-roe-block, like the other scripts.
 - `roe`: `0` on success; `2` for `roe help`/usage and unknown commands (and `roe model`
   with too many arguments). Anything the `exec`'d script returns passes through.
 - Scripts with `-h/--help` exit `0` when help is printed.

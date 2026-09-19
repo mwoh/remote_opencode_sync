@@ -270,6 +270,25 @@ project_has_marker() {
   [[ -f "$1/.opencode/toolkit" ]] && grep -qF "remote_opencode_sync" "$1/.opencode/toolkit"
 }
 
+# project_root <dir> — walk up from <dir> to the nearest directory that carries the
+#   .opencode/toolkit marker; echo the absolute path of that project root, and return
+#   0 if found / 1 if none (echo stdout empty on failure). Used by roe track so it
+#   works from any subdirectory, not just the project root.
+project_root() {
+  local d resolved
+  resolved="$(cd "$1" 2>/dev/null && pwd)" || return 1
+  d="$resolved"
+  while :; do
+    if [[ -f "$d/.opencode/toolkit" ]] && grep -qF "remote_opencode_sync" "$d/.opencode/toolkit"; then
+      echo "$d"
+      return 0
+    fi
+    [[ "$d" == "/" ]] && break
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+
 # project_desynced <dir> — the local (gitignored) opt-out that desync.sh writes.
 project_desynced() {
   [[ -f "$1/.opencode/state/no-session-sync" ]]

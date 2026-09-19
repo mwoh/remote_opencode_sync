@@ -46,7 +46,7 @@ on this machine, restart it to load the plugin.
 **Updates:** check what you have vs. the latest release first, then update:
 
 ```
-roe version     # "remote_opencode_sync v1.5.7" + latest -> roe update
+roe version     # "remote_opencode_sync v1.5.8" + latest -> roe update
 roe update
 ```
 
@@ -63,7 +63,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.7/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.8/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -87,6 +87,7 @@ need to remember the paths under `~/.local/share/remote_opencode_sync/scripts/` 
 | Pull the latest round in | `roe pull [<dir>]` | `scripts/pull.sh` — fetch + clean rebase |
 | Push committed state out | `roe push [<dir>]` | `scripts/push.sh` |
 | Refresh a project's sync layer | `roe upgrade [<dir>]` | `scripts/upgrade.sh` — non-destructive |
+| See and change what a project syncs | `roe track [<dir>]` | `scripts/track.sh` — tracked/untracked/ignored (TUI + flags) |
 | Stop this machine syncing a copy | `roe desync` | `scripts/desync.sh` |
 | Undo desync | `roe resync` | `scripts/resync.sh` |
 | Uninstall | `roe uninstall` | `scripts/uninstall.sh` |
@@ -130,18 +131,20 @@ scripts/
   pull.sh                   `roe pull` — fetch + clean rebase (plugin's ritual, manual)
   push.sh                   `roe push` — push committed state (prevents non-fast-forward)
   upgrade.sh                `roe upgrade` — non-destructive refresh of a project's seed
+  track.sh                  `roe track` — see/change what a project syncs (list, ignore, unignore, TUI)
+  track_tui.py              curses TUI for `roe track` (python3 standard library only)
   desync.sh                 stop one working copy from syncing (local only)
   resync.sh                 undo a desync
   setup-machine.sh          lazy one-time machine setup
   uninstall.sh              remove what setup created (see below)
-  lib.sh                    shared helpers (placeholder relink, package install/remove, manifest, project seed detection)
+  lib.sh                    shared helpers (placeholder relink, package install/remove, manifest, project seed detection, project_root walk-up)
 docs/
   machine-setup.md          new-machine checklist (the first step)
   daily-workflow.md         everyday playbook + advanced options
   scripts-reference.md      every script, its options, and how roe wires through
   agent-handoff.md          takeover guide: current state, tests, release process
 tests/
-  features.sh               115-check sandbox e2e (fake gh) — run before any release
+  features.sh               145-check sandbox e2e (fake gh) — run before any release
   model-features.sh         28-check model-helper regression
   plugin-test.mjs           15-check session-sync plugin harness
   shims/gh                  fake `gh` backing the sandbox
@@ -179,13 +182,16 @@ tests/
   marker (`roe projects`, with a short-lived cache) and clone a compatible repo (`roe clone`).
 - **`desync.sh` / `resync.sh`** — per working copy: opt one machine's copy of a project out
   of the sync loop (`roe desync`) and bring it back (`roe resync`). Local-only, never pushed.
-- **`status.sh` / `pull.sh` / `push.sh` / `upgrade.sh`** — `roe status` answers "is this a
-  valid roe project, and what does it need?" (push / pull / diverged / dirty / desynced /
-  seed drift / toolkit update, exiting 0 = current, 2 = action needed, 1 = not a roe
-  project). `roe pull` and `roe push` are manual in/out halves of the sync (pull = fetch +
-  clean rebase, mirroring the plugin's session-start ritual; push refuses a
+- **`status.sh` / `pull.sh` / `push.sh` / `upgrade.sh` / `track.sh`** — `roe status` answers
+  "is this a valid roe project, and what does it need?" (push / pull / diverged / dirty /
+  desynced / seed drift / toolkit update, exiting 0 = current, 2 = action needed, 1 = not
+  a roe project). `roe pull` and `roe push` are manual in/out halves of the sync (pull =
+  fetch + clean rebase, mirroring the plugin's session-start ritual; push refuses a
   non-fast-forward). `roe upgrade` refreshes an existing project's seed files to the
-  current toolkit — **never overwriting** user content; `roe update` (toolkit itself) and
+  current toolkit — **never overwriting** user content. `roe track` shows what a project
+  actually syncs (tracked / untracked-but-synced / ignored — ignored files are the ones
+  that never travel) and moves files between those states by editing the
+  remote_opencode_sync-managed `.gitignore` block; `roe update` (toolkit itself) and
   `roe upgrade` (a project) are different actions.
 - **`lib.sh`** — internal helpers (placeholder relink, package install/remove, uninstall
   manifest, model pin, project seed detection); you never call it directly.
@@ -254,7 +260,7 @@ opencode               # AGENTS.md -> docs/agent-handoff.md -> CONTINUE.md = ful
 
 Here, the session-sync plugin pulls/rebase at session start, `wip:`-backs up uncommitted work
 on idle, and injects `CONTINUE.md` into context compaction — in this repo as in any project.
-`tests/features.sh` §I keeps the self-host honest (the 115-check count includes it):
+`tests/features.sh` §I keeps the self-host honest (the 145-check count includes it):
 if the marker, config commands, `CONTINUE.md`, or rules header are removed, the suite fails.
 
 ## Creating a new project
@@ -438,6 +444,29 @@ current toolkit, non-destructively (it never overwrites your content):
 `roe upgrade` refuses to run over uncommitted work (commit or stash first — it never
 bundles your changes) and, on a desynced copy, refreshes only the committed files
 (marker/commands), leaving the skip-worktree AGENTS.md/.gitignore alone.
+
+## What actually syncs: `roe track`
+
+The plugin's automatic snapshot (`wip:`) commits **everything git would add** — so the
+`.gitignore` is the real boundary of "what syncs": a file ignored anywhere in the repo
+never travels, and everything else does. `roe track` makes that boundary visible and
+editable:
+
+```
+roe track                # interactive TUI (falls back to a text report off a terminal)
+roe track --list <dir>   # three lists: tracked / untracked-but-synced / ignored
+roe track --ignore notes.txt      # stop a file syncing
+roe track --unignore notes.txt    # let it sync again
+```
+
+It works from any directory below a project (it walks up to the `.opencode/toolkit`
+marker), and edits **only the `# --- added by remote_opencode_sync ---` block** of the
+project's `.gitignore` — the ignore rules you wrote yourself are never touched. Ignoring a
+tracked file also `git rm --cached`s it (it stays on your disk, it just stops syncing);
+unignoring re-adds it. Changes stay in the working tree (review them; the next commit +
+idle wip ships them). Caveat: the pattern propagates to every machine on the next push,
+but a file already in *history* on another machine stays "tracked" there until the next
+pull re-applies the rule — gitignore never un-tracks historical files on its own.
 
 ## Pinned model
 

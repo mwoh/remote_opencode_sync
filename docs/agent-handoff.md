@@ -8,8 +8,8 @@ detail that took real effort to learn.
 
 ## 1. Current state
 
-- **Latest release: v1.5.7** (tag `v1.5.7`). See the "Release history" table below.
-- Everything described in `PLAN.md`'s roadmap through v1.5.7 is implemented and shipped.
+- **Latest release: v1.5.8** (tag `v1.5.8`). See the "Release history" table below.
+- Everything described in `PLAN.md`'s roadmap through v1.5.8 is implemented and shipped.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -20,6 +20,7 @@ detail that took real effort to learn.
 
 | Tag | Commit essence | Notes |
 |-----|----------------|-------|
+| v1.5.8 | `roe track` — see/change what a project actually syncs. Because the idle `wip:` snapshot does `git add -A`, `.gitignore` is the true sync boundary; `track` edits only the `# --- added by remote_opencode_sync ---` block. `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 **standard-library only** via a standing AGENTS.md carve-out); `project_root` walk-up in `lib.sh` (also lets status-style scripts accept subdirectories); escape guard | features suite 115 → 145 checks (§L) |
 | v1.5.7 | `roe status` / `roe pull` / `roe push` / `roe upgrade` — the sync-state advisory + manual in/out halves of the sync + a non-destructive per-project seed refresh. Shared seed-detection predicates in `lib.sh` (`project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`) and a comment-aware `jsonc_inject_block` restore the fallback commands while keeping the pinned model | features suite 79 → 115 checks (§K) |
 | v1.5.6 | `roe version` reports installed + latest release (git tags; pure bash/awk; offline-graceful; sandbox-tested via fake origin) | features suite 75 → 79 checks |
 | v1.5.5 | the toolkit repo self-hosts its own workflow (marker, config, CONTINUE.md, session logs, rules header) — clone → `roe setup` → `opencode` = full handoff on any machine | features suite 71 → 75 checks (§I guards the self-host markers) |
@@ -57,7 +58,7 @@ templates/
 docs/
   machine-setup.md, daily-workflow.md, scripts-reference.md, agent-handoff.md
 tests/                  VENDORED VERIFICATION HARNESSES (see §3)
-  features.sh              sandbox e2e (115 checks) using tests/shims/gh
+  features.sh              sandbox e2e (145 checks) using tests/shims/gh
   model-features.sh        model-helper regression (28 checks)
   plugin-test.mjs          plugin behaviour harness (15 checks)
   shims/gh                 fake `gh` for the sandbox (bare repos under $GH_FAKE_ROOT)
@@ -83,7 +84,7 @@ before any release; the sandbox suites clear fallback automatically.
 
 ```
 cd <repo-root>
-bash tests/features.sh        # 115 checks  (~60s; needs git, python3, node-agnostic)
+bash tests/features.sh        # 145 checks  (~60s; needs git, python3, node-agnostic)
 bash tests/model-features.sh  # 28 checks
 node tests/plugin-test.mjs    # 15 checks   (needs node)
 bash -n scripts/*.sh bin/roe tests/*.sh   # syntax sweep
@@ -131,6 +132,11 @@ Hard-won gotchas (do not "fix" these away):
 7. `scripts/lib.sh` and the runtime scripts are deliberately dependency-light: **no `jq`,
    no `python`, no node in shipped code** (`gh --template` renders JSON; awk/sed do text
    work). Python may appear only inside test assertions.
+   - **ONE standing exception (v1.5.8, user-approved):** the interactive `roe track` UI is
+     `scripts/track_tui.py` — a thin presentation layer over `track.sh`, python3
+     **standard-library only** (`curses`, no pip). Flag modes work everywhere and the TUI
+     falls back to the text report when python3/`curses`/a TTY is missing. All state
+     mutation still lives in bash (`track.sh`), which is the scriptable surface.
 
 `model-features.sh` exercises `model_from_global` / `model_get` / `model_resolve` /
 `model_set` with controlled `HOME` values plus the `roe model` subcommand. It uses a
@@ -140,7 +146,7 @@ separate scratch root (`/tmp/opencode/modeltest`) so it never collides with `fea
 
 Before any release:
 
-1. **Verify**: run all three suites + `bash -n` (§3). All green: features 115, model 28,
+1. **Verify**: run all three suites + `bash -n` (§3). All green: features 145, model 28,
    plugin 15.
 2. **Bump docs** — a version bump updates these **together, in the same commit**:
    - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)
@@ -210,7 +216,9 @@ Before any release:
 - **`roe` argument injection** (see `docs/scripts-reference.md`): `adopt` forwards
   `--existing <dir>` then your args; `projects`/`clone` forward the subcommand word then
   your args; `status`/`pull`/`push`/`upgrade` are complete pass-through (one optional
-  target dir, defaulting to the current directory); `version`/`help`/`model` are handled
+  target dir, defaulting to the current directory); `track` is complete pass-through too,
+  though its project resolution walks up to the marker rather than defaulting to the cwd;
+  `version`/`help`/`model` are handled
   inline in `bin/roe` (there is no `model.sh`). `roe version` since v1.5.6 appends
   `latest: …` by `git ls-remote --tags` against the toolkit's origin + `ver_sort_max`/
   `ver_gt` (awk, `lib.sh`) — update hints only when the remote tag is strictly newer,
@@ -249,6 +257,22 @@ Before any release:
   edits would be silently ignored). It also never rewrites a config whose `command` key
   exists but is incomplete — that is flagged for a manual merge — and never touches a
   rules/ignore block that is already marked.
+- **`roe track` edits ONLY the roe block** (`track.sh`): the `# --- added by
+  remote_opencode_sync ---` region of the project's `.gitignore`. User-written ignore rules
+  anywhere else are reported but never touched; `--unignore` **refuses (exit 1)** a path
+  whose only rule lives outside the block. The script idempotently re-uses existing
+  patterns and only ever calls `git rm --cached` for *tracked* targets (files stay on
+  disk). Root-relative path normalization refuses `..`/absolute escapes (exit 1).
+- **`roe track` cross-machine caveat**: a `.gitignore` rule propagates via push, but it
+  never un-tracks a file that is already in history elsewhere — the other machine needs to
+  pull (and touch/re-add the file) for the change to take effect. This is by design (git
+  semantics), printed in the TUI's help, and must be preserved in tests. The `project_root`
+  walk-up (lib.sh) resolves from any subdirectory; it bails (exit 1) when no `.opencode/toolkit`
+  marker exists above, and it is also what lets status-style scripts accept a subdirectory.
+- **The TUI is presentation-only**: `track_tui.py` never edits state itself — it shells
+  back to `track.sh --list`/`--ignore`/`--unignore` (the tested/scriptable surface), so a
+  bug in the UI can't corrupt a repo. It must stay python3 standard-library-only; the TUI
+  falls back to `--list` output when `curses`, a TTY, or python3 is missing.
 - **`jsonc_inject_block`** (lib.sh, v1.5.7) generalizes the `model_set` comment-aware awk:
   it inserts a multi-line block before the final closing brace, adding the separator comma
   to the previous element and respecting trailing `//` comments. `roe upgrade` uses it to
@@ -277,8 +301,9 @@ Before any release:
 |---------|----------|
 | Why it exists / how it works | `PLAN.md`, `README.md` |
 | Per-script options & roe wiring | `docs/scripts-reference.md` |
-| Day-to-day flows (resume, handoff, desync) | `docs/daily-workflow.md` |
+| Day-to-day flows (resume, handoff, desync, track) | `docs/daily-workflow.md` |
 | Installing a machine | `docs/machine-setup.md` |
 | Verifying changes | `tests/` (this §3), release notes |
 | Plugin behaviour & its quiet gating | `plugins/session-sync.js` |
 | Seeding/conflict resolution | `scripts/new-project.sh`, `templates/` |
+| Sync-scope / `.gitignore` roe-block editing | `scripts/track.sh`, `scripts/track_tui.py` |

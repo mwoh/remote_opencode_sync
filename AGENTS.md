@@ -54,7 +54,10 @@ suites (`bash tests/features.sh`, `bash tests/model-features.sh`,
 - Commit style: `type: <lowercase subject> (vX.Y.Z)` with `feat:`/`fix:`/`docs:`/`chore:`.
 - Runtime code stays **dependency-light bash** — no `jq`, `python`, or `node` in shipped
   scripts (`gh --template` for JSON, awk/sed for text). Python MAY appear only inside
-  test assertions.
+  test assertions. **Only exception:** `scripts/track_tui.py` — python3
+  **standard-library only** (`curses`, no pip), purely the interactive `roe track` UI, a
+  thin presentation layer over bash; flag modes work everywhere and the TUI falls back to
+  a text report when python3 is unavailable.
 - Don't break the detection markers: `.opencode/toolkit` containing `remote_opencode_sync`,
   the `## 1. Session start` rules header, and the `.gitignore` scaffold marker — the
   plugin, `projects.sh`, `desync.sh`, and `new-project.sh` all key off them.
