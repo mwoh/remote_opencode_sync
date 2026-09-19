@@ -39,6 +39,13 @@ roe adopt <dir> [--name <repo>] [--resolve append|ask|skip|overwrite] [--no-scan
 
 - Preserves existing git history; initializes if the dir isn't a repo; won't repoint an
   existing `origin` without `--force`.
+- Uncommitted changes in the folder get bundled into the import commit — adopt **warns**
+  you first (nothing is lost).
+- Under `--force`, the old `origin` is replaced and adopt names the previous URL (the old
+  repo on its host is left untouched).
+- Annotated git tags travel too (`--follow-tags`), and if you pushed a branch that isn't
+  the remote's default (e.g. `master` into a repo defaulting to `main`) adopt prints a
+  hint to align them.
 - Seeds templates without clobbering; `--resolve` (default `append`) appends the workflow
   rules/ignore patterns behind a marker and reports what it skipped.
 - `--scan` (default) drops a FIRST STEP into `CONTINUE.md` telling the first opencode

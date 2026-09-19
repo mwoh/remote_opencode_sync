@@ -115,6 +115,35 @@ check "adopt added the sync seed commit" "$(test "$(git -C "$ROOT/E/legacy" log 
 check "adopt pushed everything" "$([[ "$(git -C "$ROOT/E/legacy" log --oneline -1)" == "$(remote_head legacy)" ]]; echo $?)" ""
 check "adopt pinned the model" "$(grep -q '"model": "opencode/big-pickle"' "$ROOT/E/legacy/opencode.jsonc"; echo $?)" ""
 
+echo "== E2. adopt hardening: dirty tree, origin repoint, branch/default, tags =="
+mkdir -p "$ROOT/E2/dirtyproj"
+git -C "$ROOT/E2/dirtyproj" init -q -b main
+( cd "$ROOT/E2/dirtyproj" && printf '#!/bin/sh\necho hi\n' > script.sh && git add -A && git -c user.email=t@t -c user.name=t commit -qm base && printf 'work in progress\n' > wip.txt && printf 'draft\n' > draft.md )
+mkbare dirtyproj
+( cd "$ROOT/E2" && "$ROE/scripts/new-project.sh" --existing dirtyproj --name dirtyproj --model opencode/big-pickle > "$ROOT/E2/dirty.out" 2>&1 )
+expect_exit "adopt of a dirty tree succeeds (warn + continue)" 0 $? "$(tail -n2 "$ROOT/E2/dirty.out")"
+check "warns pre-existing changes are included" "$(grep -q 'pre-existing change' "$ROOT/E2/dirty.out"; echo $?)" ""
+check "uncommitted file traveled in the import commit" "$(git -C "$ROOT/E2/dirtyproj" show HEAD:wip.txt 2>/dev/null | grep -q 'work in progress'; echo $?)" ""
+
+mkdir -p "$ROOT/E2/oldorigin"
+git -C "$ROOT/E2/oldorigin" init -q -b main
+( cd "$ROOT/E2/oldorigin" && git remote add origin "https://github.com/other/beta-old.git" && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base )
+mkbare oldorigin
+( cd "$ROOT/E2" && "$ROE/scripts/new-project.sh" --existing oldorigin --name oldorigin --force > "$ROOT/E2/repoint.out" 2>&1 )
+expect_exit "adopt --force repoints a foreign origin" 0 $? "$(tail -n2 "$ROOT/E2/repoint.out")"
+check "repoint notice names the old origin" "$(grep -q 'previous origin' "$ROOT/E2/repoint.out"; echo $?)" ""
+check "origin now points at the toolkit repo" "$([[ "$(git -C "$ROOT/E2/oldorigin" remote get-url origin)" == "$(ssh_url oldorigin)" ]]; echo $?)" "$(git -C "$ROOT/E2/oldorigin" remote get-url origin)"
+
+mkdir -p "$ROOT/E2/branchy"
+git -C "$ROOT/E2/branchy" init -q -b develop
+( cd "$ROOT/E2/branchy" && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base && git tag -a v1.0 -m v1.0 )
+mkbare branchy
+( cd "$ROOT/E2" && "$ROE/scripts/new-project.sh" --existing branchy --name branchy > "$ROOT/E2/branch.out" 2>&1 )
+expect_exit "adopt pushes a non-default branch" 0 $? "$(tail -n2 "$ROOT/E2/branch.out")"
+check "hints when pushed branch differs from remote default" "$(grep -q 'default branch' "$ROOT/E2/branch.out"; echo $?)" ""
+check "pushed ref is the local branch (develop)" "$(git --git-dir "$GH_FAKE_ROOT/fakeuser/branchy.git" show-ref --verify --quiet refs/heads/develop; echo $?)" ""
+check "annotated tag traveled to the remote" "$(git --git-dir "$GH_FAKE_ROOT/fakeuser/branchy.git" tag | grep -q '^v1.0$'; echo $?)" ""
+
 echo "== F. projects + clone =="
 mkbare plain1
 seed_remote "$GH_FAKE_ROOT/fakeuser/plain1.git"

@@ -171,18 +171,24 @@ What it does (both modes):
 
 1. **[1/4]** Resolve owner + target URLs, run the resume/collision check, create the
    private GitHub repo (or reuse a leftover empty stub) and get into the working copy;
-   normalizes `origin` to the canonical SSH URL.
+   normalizes `origin` to the canonical SSH URL. Replacing a foreign `origin` (with
+   `--force`) prints what the previous origin was.
 2. **[2/4]** Seed the workflow files from `templates/`: `AGENTS.md`, `CONTINUE.md`,
    `opencode.jsonc` (incl. session commands + pinned model), `.gitignore`, `.env.example`,
    plus the `.opencode/toolkit` marker — the exact marker the session-sync plugin gates
-   on. Never overwrites existing user files without asking (`--resolve`).
+   on. Never overwrites existing user files without asking (`--resolve`). Existing-mode
+   snapshots the pre-seed tree: any pre-existing uncommitted changes are called out before
+   the commit (they are included in it — warn-and-continue).
 3. **[3/4]** Commit (`chore: scaffold …` for scratch, `chore: adopt …` / `feat: import
    …` for adopt) — skipped if there is nothing new.
-4. **[4/4]** `git push -u origin HEAD`. If the push fails, everything committed is kept
+4. **[4/4]** `git push -u origin HEAD --follow-tags` (annotated tags reachable from the
+   pushed history travel too). If the push fails, everything committed is kept
    and **re-running the same command resumes**: it detects a leftover clone of the target
    URL or an empty repo stub, skips create/seed/commit, re-prompts for nothing, and only
    finishes the push. A genuine collision (non-empty repo that isn't yours) is refused
-   with a hint (`gh repo delete <name> --yes`).
+   with a hint (`gh repo delete <name> --yes`). After a successful push, if the pushed
+   branch differs from the remote's default branch (e.g. `master` pushed into a fresh
+   repo defaulting to `main`) a note tells you to align them.
 
 Model resolution precedence: `--model <id>` → `$MODEL_PIN` → your global opencode config
 model → interactive prompt (adopt additionally respects an existing model in the config).

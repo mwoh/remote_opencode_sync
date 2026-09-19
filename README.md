@@ -123,7 +123,7 @@ docs/
   scripts-reference.md      every script, its options, and how roe wires through
   agent-handoff.md          takeover guide: current state, tests, release process
 tests/
-  features.sh               61-check sandbox e2e (fake gh) — run before any release
+  features.sh               71-check sandbox e2e (fake gh) — run before any release
   model-features.sh         28-check model-helper regression
   plugin-test.mjs           15-check session-sync plugin harness
   shims/gh                  fake `gh` backing the sandbox
@@ -249,6 +249,13 @@ roe adopt <dir>
 - Default repo name = basename of the directory (override with `--name <repo>`).
 - Existing git history (if any) is **preserved**; if the dir isn't a repo it's initialized.
 - Refuses to repoint an existing git `origin` unless you pass `--force`.
+- If the folder has uncommitted changes, adopt **warns** you that they'll be included in
+  the import commit (and continues — they travel, they're not lost).
+- With `--force`, the old `origin` is replaced and adopt says so, naming the previous URL
+  (the old repo on its host is left untouched).
+- Annotated git tags reachable from the pushed history travel too (`--follow-tags`).
+- After the push, if you pushed a branch other than the remote's default (e.g. `master`
+  into a fresh repo defaulting to `main`), adopt prints a hint to align them.
 - Won't clobber existing files (`AGENTS.md`, `.gitignore`, …). `--resolve` controls conflicts:
   - `append` (default): appends the workflow rules + ignore patterns behind a marker,
     skips the rest, and prints a clear "things to review" list.

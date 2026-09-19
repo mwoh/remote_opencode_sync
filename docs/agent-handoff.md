@@ -10,6 +10,10 @@ detail that took real effort to learn.
 
 - **Latest release: v1.5.3** (tag `v1.5.3`). See the "Release history" table below.
 - Everything described in `PLAN.md`'s roadmap through v1.5.3 is implemented and shipped.
+- **Unreleased work on `main` (beyond v1.5.3, next tag):** vendored test harnesses +
+  `docs/agent-handoff.md` + `AGENTS.md` standing instructions (all pushed), and the adopt
+  hardening (dirty-tree warning, origin-repoint notice, branch-vs-default hint,
+  `--follow-tags` — features suite now 71 checks). Not yet tagged.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -50,7 +54,7 @@ templates/
 docs/
   machine-setup.md, daily-workflow.md, scripts-reference.md, agent-handoff.md
 tests/                  VENDORED VERIFICATION HARNESSES (see §3)
-  features.sh              sandbox e2e (61 checks) using tests/shims/gh
+  features.sh              sandbox e2e (71 checks) using tests/shims/gh
   model-features.sh        model-helper regression (28 checks)
   plugin-test.mjs          plugin behaviour harness (15 checks)
   shims/gh                 fake `gh` for the sandbox (bare repos under $GH_FAKE_ROOT)
@@ -64,7 +68,7 @@ before any release; the sandbox suites clear fallback automatically.
 
 ```
 cd <repo-root>
-bash tests/features.sh        # 61 checks   (~40s; needs git, python3, node-agnostic)
+bash tests/features.sh        # 71 checks   (~40s; needs git, python3, node-agnostic)
 bash tests/model-features.sh  # 28 checks
 node tests/plugin-test.mjs    # 15 checks   (needs node)
 bash -n scripts/*.sh bin/roe tests/*.sh   # syntax sweep
@@ -121,7 +125,7 @@ separate scratch root (`/tmp/opencode/modeltest`) so it never collides with `fea
 
 Before any release:
 
-1. **Verify**: run all three suites + `bash -n` (§3). All green: features 61, model 28,
+1. **Verify**: run all three suites + `bash -n` (§3). All green: features 71, model 28,
    plugin 15.
 2. **Bump docs** — a version bump updates these **together, in the same commit**:
    - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)
@@ -190,6 +194,14 @@ Before any release:
   `--existing <dir>` then your args; `projects`/`clone` forward the subcommand word then
   your args; `version`/`help`/`model` are handled inline in `bin/roe` (there is no
   `model.sh`).
+- **Adopt hardening** (`scripts/new-project.sh`): adopting warns when the pre-existing tree
+  is dirty and bundles those changes into the import commit (warn-and-continue, captured
+  *before* seeding); replacing a foreign `origin` under `--force` names the old URL;
+  pushes annotated tags with `--follow-tags`; and after a successful push warns when the
+  pushed branch differs from the remote's `default_branch` (via `gh api … --jq
+  .default_branch`, falling back to `git ls-remote --symref` when no default can be read —
+  the ls-remote fallback is silent for *unborn* default branches, which is exactly the
+  fresh-empty-repo case the `gh api` path catches).
 - **`GITHUB_SSH_BASE` must include the URL separator**: `git@github.com:` or
   `file:///tmp/fake/` (trailing slash). It is prepended verbatim to `${OWNER}/${NAME}.git`.
 - **`model_set` injection** (`scripts/lib.sh`) is comment-aware: it inserts the

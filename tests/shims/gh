@@ -54,6 +54,10 @@ case "$1" in
         printf 'HTTP 404: not found\n' >&2
         exit 1
         ;;
+      repos/*/*)
+        # repos/{owner}/{repo} — fake bares always default to main.
+        printf '{"default_branch":"main"}\n'
+        ;;
       *) exit 1 ;;
     esac
     ;;

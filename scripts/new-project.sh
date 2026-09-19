@@ -346,6 +346,7 @@ if [[ "$MODE" == "existing" ]]; then
     if [[ "$EXISTING_ORIGIN" != "$SSH_URL" ]]; then
       git -C "$PROJECT_DIR" remote set-url origin "$SSH_URL"
       echo ">> Repointed origin -> $SSH_URL"
+      echo "  note: previous origin '$EXISTING_ORIGIN' is replaced — the old repo on its host is left untouched."
     fi
   else
     git -C "$PROJECT_DIR" remote add origin "$SSH_URL"
@@ -384,6 +385,12 @@ fi
 # ---- [2/4] seed the standard files ----
 cd "$PROJECT_DIR"
 echo ">> [2/4] Seeding workflow files (resolve=$RESOLVE)..."
+# Snapshot the user's pre-existing dirt BEFORE seeding so the import-commit
+# warning below reflects only what they brought in, not the seeded files.
+PREEXISTING_DIRTY=""
+if [[ "$MODE" == "existing" ]]; then
+  PREEXISTING_DIRTY="$(git status --porcelain 2>/dev/null || true)"
+fi
 seed "$TEMPLATES_DIR/AGENTS.md.tpl"
 seed "$TEMPLATES_DIR/CONTINUE.md.tpl"
 seed "$TEMPLATES_DIR/opencode.jsonc.tpl"
@@ -440,6 +447,12 @@ echo ">> [3/4] Committing..."
 if [[ -z "$(git status --porcelain 2>/dev/null || true)" ]]; then
   echo "  nothing new to commit (resume of an earlier run)"
 else
+  if [[ "$MODE" == "existing" && -n "$PREEXISTING_DIRTY" ]]; then
+    n="$(printf '%s\n' "$PREEXISTING_DIRTY" | wc -l | tr -d ' ')"
+    echo "  note: $n pre-existing change(s) will be included in the import commit:"
+    printf '%s\n' "$PREEXISTING_DIRTY" | head -n 5 | sed 's/^/    /'
+    if [[ "$n" -gt 5 ]]; then echo "    (+ $((n-5)) more)"; fi
+  fi
   git add -A
   if [[ "$MODE" == "existing" ]]; then
     if [[ "$HAS_COMMITS" -eq 0 ]]; then
@@ -452,11 +465,22 @@ else
   fi
 fi
 echo ">> [4/4] Pushing..."
-if ! git push -u origin HEAD; then
+if ! git push -u origin HEAD --follow-tags; then
   echo
   echo "  Push failed (network hiccup?). Everything is committed locally." >&2
   echo "  Re-run the same command to resume — it skips create/seed/commit and only pushes left." >&2
   exit 1
+fi
+
+# Warn when the pushed branch is not the remote's default: clone/fetch flows
+# assume HEAD alignment, so a fresh empty GitHub repo defaulting to 'main'
+# while you pushed 'master'/'develop' would confuse them.
+local_branch="$(git rev-parse --abbrev-ref HEAD)"
+remote_default="$(gh api "repos/$OWNER/$NAME" --jq .default_branch 2>/dev/null || true)"
+[[ -n "$remote_default" ]] || remote_default="$(git ls-remote --symref origin HEAD 2>/dev/null | head -n1 | sed -E 's#^ref: refs/heads/([^[:space:]]+).*#\1#')"
+if [[ -n "$remote_default" && "$remote_default" != "$local_branch" ]]; then
+  echo "  note: remote default branch is '$remote_default' but you just pushed '$local_branch'." >&2
+  echo "        align them: set the GitHub default branch to $local_branch, or: git remote set-head origin -a" >&2
 fi
 
 echo

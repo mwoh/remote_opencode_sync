@@ -82,7 +82,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (61 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+| `tests/` | Vendored verification harnesses: `features.sh` (71 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Workflows
 
@@ -102,7 +102,10 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 [--force] [--model <id>]` — preserves history, seeds/workflow rules without clobbering
 (append by default), drops a FIRST STEP for the first session's scan-and-orient pass,
 pins the model in `opencode.jsonc` (an existing model is respected and kept), commits +
-pushes.
+pushes. Adopt hardening: warns when the pre-existing tree is dirty (those changes ride
+into the import commit), names the replaced `origin` under `--force`, pushes annotated
+tags (`--follow-tags`), and after the push hints when the pushed branch isn't the
+remote's default.
 
 ### Project updates (run from any machine)
 `roe update` (or re-run the bootstrap curl, or
@@ -155,5 +158,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.2 (resumable `new`/`adopt`; `roe desync`/`roe resync`; `roe projects`/`roe clone`; plugin silent in non-toolkit projects)
 - [x] Released v1.5.3 (fix `model_set` injection comma vs trailing `//` comments, caught by the rebuilt 28-check model regression)
 - [x] Vendored the verification harnesses into `tests/` + added the takeover guide (`docs/agent-handoff.md`) and standing session instructions (`AGENTS.md`; the never-leave-anything-stale mandate)
+- [x] Adopt hardening (unreleased, next tag): dirty-tree warning + origin-repoint notice + branch-vs-remote-default hint + `--follow-tags` — features suite 61 → 71 checks, all green
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume
