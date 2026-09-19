@@ -158,6 +158,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.2 (resumable `new`/`adopt`; `roe desync`/`roe resync`; `roe projects`/`roe clone`; plugin silent in non-toolkit projects)
 - [x] Released v1.5.3 (fix `model_set` injection comma vs trailing `//` comments, caught by the rebuilt 28-check model regression)
 - [x] Vendored the verification harnesses into `tests/` + added the takeover guide (`docs/agent-handoff.md`) and standing session instructions (`AGENTS.md`; the never-leave-anything-stale mandate)
-- [x] Adopt hardening (unreleased, next tag): dirty-tree warning + origin-repoint notice + branch-vs-remote-default hint + `--follow-tags` — features suite 61 → 71 checks, all green
+- [x] Released v1.5.4 (vendored test harnesses + takeover guide + `AGENTS.md` standing instructions; adopt hardening — dirty-tree warning, origin-repoint notice, branch-vs-remote-default hint, `--follow-tags`; always-release cadence rule — features suite 61 → 71 checks, all green)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume

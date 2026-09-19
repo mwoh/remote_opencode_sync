@@ -8,12 +8,8 @@ detail that took real effort to learn.
 
 ## 1. Current state
 
-- **Latest release: v1.5.3** (tag `v1.5.3`). See the "Release history" table below.
-- Everything described in `PLAN.md`'s roadmap through v1.5.3 is implemented and shipped.
-- **Unreleased work on `main` (beyond v1.5.3, next tag):** vendored test harnesses +
-  `docs/agent-handoff.md` + `AGENTS.md` standing instructions (all pushed), and the adopt
-  hardening (dirty-tree warning, origin-repoint notice, branch-vs-default hint,
-  `--follow-tags` — features suite now 71 checks). Not yet tagged.
+- **Latest release: v1.5.4** (tag `v1.5.4`). See the "Release history" table below.
+- Everything described in `PLAN.md`'s roadmap through v1.5.4 is implemented and shipped.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -24,6 +20,7 @@ detail that took real effort to learn.
 
 | Tag | Commit essence | Notes |
 |-----|----------------|-------|
+| v1.5.4 | adopt hardening (dirty-tree warning, origin-repoint notice, branch/default hint, `--follow-tags`); vendored tests + takeover guide + AGENTS.md; always-release cadence rule | features suite 61 → 71 checks |
 | v1.5.3 | fix `model_set` injection comma vs trailing `//` comment | comment-aware awk in `scripts/lib.sh` |
 | v1.5.2 | resumable `new`/`adopt`, `desync`/`resync`, `projects`/`clone`, plugin silent in non-toolkit projects | biggest feature release |
 | v1.5.1 | fix seeded `prompt` → `template` schema break | migration note for the adopted project |
