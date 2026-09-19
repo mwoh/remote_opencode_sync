@@ -208,6 +208,12 @@ check "roe projects dispatch works" "$(grep -q 'remote_opencode_sync projects fo
 "$ROE/bin/roe" --help > "$ROOT/roeh.out" 2>&1
 check "roe help lists new commands" "$(grep -qE 'projects|clone|desync|resync' "$ROOT/roeh.out"; echo $?)" ""
 
+echo "== I. toolkit repo self-hosts itself =="
+check "repo root carries the toolkit marker" "$([[ -f "$ROE/.opencode/toolkit" && "$(cat "$ROE/.opencode/toolkit")" == "remote_opencode_sync" ]]; echo $?)" ""
+check "repo config pins model + fallback commands" "$(grep -q '"model": "opencode/big-pickle"' "$ROE/opencode.jsonc" && test "$(grep -c '"template"' "$ROE/opencode.jsonc")" -ge 3; echo $?)" ""
+check "CONTINUE.md carries the running handoff" "$(grep -q '^## LAST SESSION' "$ROE/CONTINUE.md"; echo $?)" ""
+check "AGENTS.md carries the session-start rules header" "$(grep -q '^## 1\. Session start' "$ROE/AGENTS.md"; echo $?)" ""
+
 echo
 echo "features.sh: $OK checks, $FAIL failed"
 exit $((FAIL ? 1 : 0))

@@ -61,8 +61,9 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 
 | Path | Purpose |
 | --- | --- |
-| `AGENTS.md` | Standing session instructions: the never-leave-anything-stale mandate, conventions, test/release pointers |
+| `AGENTS.md` | Standing session instructions: the never-leave-anything-stale mandate, conventions, test/release pointers (+ the session-start rules header — the repo dogfoods its own rules) |
 | `PLAN.md` | This document |
+| Repo-root scaffold | The toolkit repo is itself a toolkit project: `.opencode/toolkit` marker, `opencode.jsonc` (pinned model + `/resume`/`/handoff`/`/sync`), `CONTINUE.md` (running handoff), `session-logs/`, `.gitignore` — a fresh clone + `roe setup` + `opencode` is a full handoff on any machine |
 | `templates/AGENTS.md.tpl` | The base prompt / workflow rules (Layer 1) |
 | `templates/workflow-rules.md.tpl` | Rules-only block appended to existing `AGENTS.md` on adopt |
 | `templates/.gitignore.append.tpl` | Ignore patterns appended to existing `.gitignore` on adopt |
@@ -82,7 +83,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (71 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+| `tests/` | Vendored verification harnesses: `features.sh` (75 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Workflows
 
@@ -159,5 +160,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.3 (fix `model_set` injection comma vs trailing `//` comments, caught by the rebuilt 28-check model regression)
 - [x] Vendored the verification harnesses into `tests/` + added the takeover guide (`docs/agent-handoff.md`) and standing session instructions (`AGENTS.md`; the never-leave-anything-stale mandate)
 - [x] Released v1.5.4 (vendored test harnesses + takeover guide + `AGENTS.md` standing instructions; adopt hardening — dirty-tree warning, origin-repoint notice, branch-vs-remote-default hint, `--follow-tags`; always-release cadence rule — features suite 61 → 71 checks, all green)
+- [x] Released v1.5.5 (the toolkit repo self-hosts its own workflow: `.opencode/toolkit` marker, `opencode.jsonc`, `CONTINUE.md`, `session-logs/`, `.gitignore`, `## 1. Session start` rules header — clone anywhere → `roe setup` → `opencode` = full handoff; `tests/features.sh` §I guards the self-host markers — features suite 71 → 75 checks, all green)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume

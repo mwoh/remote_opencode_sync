@@ -7,6 +7,19 @@
 > Then `PLAN.md` (design/architecture), `README.md` (user docs), and the other docs under
 > `docs/` as needed.
 
+## 1. Session start — orient before touching anything
+- Confirm git state is sane: `git status`. Leave pre-existing uncommitted changes alone
+  and say so.
+- Read `docs/agent-handoff.md` (the takeover guide) and `CONTINUE.md` (the running
+  handoff) before any work. State what the last session did and what the NEXT STEPS are
+  before proceeding.
+- This repo carries the `.opencode/toolkit` marker, so the session-sync plugin runs
+  here too: it pulls/rebase on session start, snapshots dirty work as `wip:` on idle,
+  and injects CONTINUE.md + the session log into compaction. If the plugin isn't
+  installed, do the `git pull --rebase` yourself.
+- Finish each task as a coherent change set (below) — commit + push, and keep the
+  LAST SESSION block in `CONTINUE.md` fresh so any machine can continue.
+
 ## The #1 rule: never leave anything stale
 
 **Any change ships as one coherent change set.** When you modify code (or templates,

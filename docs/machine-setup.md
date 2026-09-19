@@ -92,6 +92,10 @@ will error at session start, exactly as it would if you picked that model manual
 
 - Bring a project onto this machine: `gh repo clone <project>` → `cd <project>` →
   install deps → `opencode`.
+- **Continue developing the toolkit itself** — this repo is a toolkit project too
+  (marker, `opencode.jsonc`, `CONTINUE.md`, `session-logs/`): `cd remote_opencode_sync &&
+  opencode`, and `AGENTS.md` → `docs/agent-handoff.md` → `CONTINUE.md` will re-orient you
+  from where the last session left off on any machine.
 - Create a new project from anywhere: `roe new <name>` (alias for
   `scripts/new-project.sh <name>`).
 - Update the toolkit later: `roe update`. Remove it: `roe uninstall` — it also removes the

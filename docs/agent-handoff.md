@@ -8,8 +8,8 @@ detail that took real effort to learn.
 
 ## 1. Current state
 
-- **Latest release: v1.5.4** (tag `v1.5.4`). See the "Release history" table below.
-- Everything described in `PLAN.md`'s roadmap through v1.5.4 is implemented and shipped.
+- **Latest release: v1.5.5** (tag `v1.5.5`). See the "Release history" table below.
+- Everything described in `PLAN.md`'s roadmap through v1.5.5 is implemented and shipped.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -20,6 +20,7 @@ detail that took real effort to learn.
 
 | Tag | Commit essence | Notes |
 |-----|----------------|-------|
+| v1.5.5 | the toolkit repo self-hosts its own workflow (marker, config, CONTINUE.md, session logs, rules header) — clone → `roe setup` → `opencode` = full handoff on any machine | features suite 71 → 75 checks (§I guards the self-host markers) |
 | v1.5.4 | adopt hardening (dirty-tree warning, origin-repoint notice, branch/default hint, `--follow-tags`); vendored tests + takeover guide + AGENTS.md; always-release cadence rule | features suite 61 → 71 checks |
 | v1.5.3 | fix `model_set` injection comma vs trailing `//` comment | comment-aware awk in `scripts/lib.sh` |
 | v1.5.2 | resumable `new`/`adopt`, `desync`/`resync`, `projects`/`clone`, plugin silent in non-toolkit projects | biggest feature release |
@@ -51,12 +52,24 @@ templates/
 docs/
   machine-setup.md, daily-workflow.md, scripts-reference.md, agent-handoff.md
 tests/                  VENDORED VERIFICATION HARNESSES (see §3)
-  features.sh              sandbox e2e (71 checks) using tests/shims/gh
+  features.sh              sandbox e2e (75 checks) using tests/shims/gh
   model-features.sh        model-helper regression (28 checks)
   plugin-test.mjs          plugin behaviour harness (15 checks)
   shims/gh                 fake `gh` for the sandbox (bare repos under $GH_FAKE_ROOT)
+AGENTS.md               standing rules (incl. `## 1. Session start` — self-hosted)
+CONTINUE.md             this repo's running handoff / cross-device memory
+session-logs/           this repo's running session log
+opencode.jsonc          self-host config: pinned model + /resume, /handoff, /sync
+.gitignore              self-host ignore rules
+.opencode/toolkit       self-host marker (this repo is itself a toolkit project)
 LICENSE, README.md, PLAN.md
 ```
+
+> **Self-hosting note:** this repo carries the toolkit marker, so the global
+> session-sync plugin acts here too — auto pull/rebase on session start, `wip:` commits
+> on idle, CONTINUE.md + session log injected into compaction. `CONTINUE.md` is the
+> running handoff to keep fresh; `tests/features.sh` §I regresses the markers so the
+> self-hosting can't silently regress.
 
 ## 3. Verification & testing (the important part)
 
@@ -65,7 +78,7 @@ before any release; the sandbox suites clear fallback automatically.
 
 ```
 cd <repo-root>
-bash tests/features.sh        # 71 checks   (~40s; needs git, python3, node-agnostic)
+bash tests/features.sh        # 75 checks   (~40s; needs git, python3, node-agnostic)
 bash tests/model-features.sh  # 28 checks
 node tests/plugin-test.mjs    # 15 checks   (needs node)
 bash -n scripts/*.sh bin/roe tests/*.sh   # syntax sweep
@@ -122,7 +135,7 @@ separate scratch root (`/tmp/opencode/modeltest`) so it never collides with `fea
 
 Before any release:
 
-1. **Verify**: run all three suites + `bash -n` (§3). All green: features 71, model 28,
+1. **Verify**: run all three suites + `bash -n` (§3). All green: features 75, model 28,
    plugin 15.
 2. **Bump docs** — a version bump updates these **together, in the same commit**:
    - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)
@@ -215,6 +228,11 @@ Before any release:
   (gitignored) + `git update-index --skip-worktree` pins on the local stripped
   `AGENTS.md` / `.gitignore`. It never commits or pushes. `resync.sh` reverses exactly
   that (`--no-skip-worktree` + `git checkout --`).
+- **Self-hosting** (since v1.5.5): the toolkit repo carries its own `.opencode/toolkit`
+  marker, so the global plugin acts here. Anything left uncommitted during an opencode
+  session in this repo is auto-committed as `wip:` and **pushed to `main`** (which feeds
+  the curl installer) — keep the tree clean at release time and treat `wip:` as backup,
+  not as a substitute for proper change sets. The plugin never tags or releases.
 - **Uninstall must never `rm -rf` outside `$HOME`** or anything that doesn't look like a
   toolkit clone — guarded in `uninstall.sh`. The manifest path defaults to
   `~/.local/state/remote_opencode_sync/uninstall.conf` and is overridable via

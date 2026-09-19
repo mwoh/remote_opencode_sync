@@ -58,7 +58,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.4/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.5/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -94,7 +94,12 @@ yet — setup adds `~/.local/bin` to `PATH` if it was missing.
 ```
 PLAN.md                     the plan / architecture
 AGENTS.md                   standing session instructions (keep-everything-in-sync mandate)
+CONTINUE.md                 this repo's running handoff / cross-device memory
 LICENSE                     MIT
+opencode.jsonc              self-host config: pinned model + /resume, /handoff, /sync
+session-logs/               this repo's running session log
+.gitignore                  self-host ignore rules (deps, builds, secrets)
+.opencode/toolkit           self-host marker — this repo is itself a toolkit project
 templates/                  per-project files created/used by new-project.sh
   AGENTS.md.tpl             base prompt / workflow rules (Layer 1)
   CONTINUE.md.tpl           handoff log with LAST SESSION block
@@ -123,7 +128,7 @@ docs/
   scripts-reference.md      every script, its options, and how roe wires through
   agent-handoff.md          takeover guide: current state, tests, release process
 tests/
-  features.sh               71-check sandbox e2e (fake gh) — run before any release
+  features.sh               75-check sandbox e2e (fake gh) — run before any release
   model-features.sh         28-check model-helper regression
   plugin-test.mjs           15-check session-sync plugin harness
   shims/gh                  fake `gh` backing the sandbox
@@ -212,6 +217,24 @@ Only needed if you haven't used the one-liner:
 ```
 gh repo clone @@GITHUB_USER@@/remote_opencode_sync
 ```
+
+## Developing the toolkit itself (dogfooding)
+
+This repo is a toolkit project too: it carries the `.opencode/toolkit` marker, a pinned
+`opencode.jsonc`, its own `CONTINUE.md` and `session-logs/`, and the `## 1. Session start`
+rules in `AGENTS.md`. So on a fresh machine the whole loop works for the toolkit itself:
+
+```
+git clone git@github.com:mwoh/remote_opencode_sync.git
+cd remote_opencode_sync
+roe setup              # installs the global plugin + git identity (once per machine)
+opencode               # AGENTS.md -> docs/agent-handoff.md -> CONTINUE.md = full handoff
+```
+
+The session-sync plugin pulls/rebase at session start, `wip:`-backs up uncommitted work on
+idle, and injects `CONTINUE.md` into context compaction — in this repo as in any project.
+`tests/features.sh` section I keeps the self-host honest (the 75-check count includes it):
+if the marker, config commands, `CONTINUE.md`, or rules header are removed, the suite fails.
 
 ## Creating a new project
 
