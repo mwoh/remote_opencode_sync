@@ -11,10 +11,12 @@ read ONLY this plus commit history to re-orient._
 - **Summary:** Shipped v1.5.5 — made THIS repo a toolkit project (`.opencode/toolkit`
   marker, `opencode.jsonc` with pinned model + `/resume`/`/handoff`/`/sync`, `CONTINUE.md`,
   `session-logs/`, `.gitignore`, and the `## 1. Session start` rules header in `AGENTS.md`)
-  so a fresh clone anywhere → `roe setup` → `opencode` is a full handoff. Added
-  `tests/features.sh` §I guarding the self-host markers (features 71 → 75 checks, all
-  green; model 28, plugin 15, `bash -n` clean), doc-synced everything (README/PLAN/
-  agent-handoff §1/§2/§6, machine-setup "develop toolkit" blurb), tagged + released.
+  so a fresh clone anywhere → `roe setup` → `opencode` is a full handoff. Then shipped
+  v1.5.6 — `roe version` now reports the installed vs latest release (git tags, pure
+  bash/awk, offline-graceful), with `tests/features.sh` §J + new `lib.sh` helpers
+  (`ver_sort_max` / `ver_gt` / `toolkit_latest_ver`). Both fully doc-synced and released;
+  features suite grew 71 → 75 → 79 checks (all green, plus model 28 / plugin 15 and a
+  clean `bash -n`).
 - **NEXT STEPS:**
   - [ ] Run `roe setup` (scripts/setup-machine.sh) on every machine — installs the global
         session-sync plugin + git identity and links `roe`.
@@ -24,8 +26,8 @@ read ONLY this plus commit history to re-orient._
 
 ## Status
 
-The toolkit is complete for v1.5.5: workflow scripts + plugin + templates, four releases,
-vendored verification suites (features 75 / model 28 / plugin 15), ops/takeover docs, and
+The toolkit is complete for v1.5.6: workflow scripts + plugin + templates, five releases,
+vendored verification suites (features 79 / model 28 / plugin 15), ops/takeover docs, and
 this repo is itself a toolkit project. Working tree clean at release.
 
 ## Open decisions
@@ -36,4 +38,4 @@ this repo is itself a toolkit project. Working tree clean at release.
 
 ## Session log
 
-- 2026-09-19 — v1.5.4 released (adopt hardening + always-release cadence); v1.5.5 released (toolkit repo self-hosts its own workflow — clone anywhere → `roe setup` → `opencode` = full handoff; §I self-host tests, features 71 → 75).
+- 2026-09-19 — v1.5.4 released (adopt hardening + always-release cadence); v1.5.5 released (toolkit repo self-hosts its own workflow — clone anywhere → `roe setup` → `opencode` = full handoff; §I self-host tests, features 71 → 75); v1.5.6 released (`roe version` reports installed + latest release — §J, features 75 → 79).

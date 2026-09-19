@@ -73,10 +73,12 @@ There are only three shapes of argument handling to keep in mind:
    roe clone side-quest --dir ../side-quest
    ```
 
-3. **Inline commands with no script** — `roe version` (prints `git describe`), `roe
-   help`, and `roe model [id]`. `roe model` reads/edits the project's `opencode.json(c)`
-   directly via `lib.sh` helpers; there is no `model.sh`. `roe help` prints `roe`'s own
-   usage.
+3. **Inline commands with no script** — `roe version` (reports the installed version
+   and the latest release tag on the toolkit's origin, hinting `roe update` when behind;
+   any `vX.Y.Z` tag list works via `git ls-remote`, so it needs no gh/jq and degrades
+   gracefully offline), `roe help`, and `roe model [id]`. `roe model` reads/edits the
+   project's `opencode.json(c)` directly via `lib.sh` helpers; there is no `model.sh`.
+   `roe help` prints `roe`'s own usage.
 
 Because the scripts are `exec`'d (not sub-shelled), their stdout, stderr, and exit code
 are the ones you see: `roe` adds nothing and swallows nothing.

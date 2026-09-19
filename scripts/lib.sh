@@ -199,3 +199,62 @@ mf_installed() {
   fi
   mf_set "$key" "$val"
 }
+
+# --- Toolkit version helpers ------------------------------------------------
+# 'roe version' compares the installed toolkit against the latest release tag on
+# its origin. Releases are always tagged vX.Y.Z (AGENTS.md cadence rule), so
+# version detection is pure git + awk — no gh, jq, or network beyond ls-remote.
+
+# ver_sort_max — reads lines on stdin (git ls-remote --tags output, or plain tag
+#   names) and echoes the greatest vX.Y.Z name, or "" if none matched. Strips the
+#   "<sha> TAB" prefix, the refs/tags/ prefix, and annotated-tag ^{} peels.
+ver_sort_max() {
+  awk '
+    function key(s,   a, n, i, out) {   # "v1.5.10" -> zero-padded sortable key
+      sub(/^v/, "", s)
+      n = split(s, a, ".")
+      for (i = 1; i <= n; i++) if (a[i] !~ /^[0-9]+$/) return ""   # not semver
+      out = ""
+      for (i = 1; i <= n; i++) out = out sprintf("%09d", a[i])
+      return out
+    }
+    {
+      s = $0
+      sub(/^[0-9a-f]+[[:space:]]+/, "", s)   # drop "<sha> TAB"
+      sub(/^refs\/tags\//, "", s)            # refs/tags/v1.5.10 -> v1.5.10
+      sub(/\^\{\}$/, "", s)                  # annotated-tag peeled entry
+      k = key(s)
+      if (k == "") next
+      if (bestk == "" || k > bestk) { bestk = k; best = s }
+    }
+    END { print best }
+  '
+}
+
+# ver_gt <a> <b> — historic/legacy-free numeric vX.Y.Z compare. Echoes "1" if a >
+#   b, else "0".
+ver_gt() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    sub(/^v/, "", a); sub(/^v/, "", b)
+    na = split(a, A, "."); nb = split(b, B, ".")
+    for (i = 1; i <= 3; i++) {
+      va = (i <= na) ? A[i] : 0
+      vb = (i <= nb) ? B[i] : 0
+      if (va > vb) { print 1; exit }
+      if (va < vb) { print 0; exit }
+    }
+    print 0
+  }'
+}
+
+# toolkit_latest_ver <repo_dir> — echoes the greatest vX.Y.Z tag advertised by
+#   the repo's origin, or "" (return 1) if there is no origin / no match / the
+#   remote is unreachable (offline).
+toolkit_latest_ver() {
+  local dir="$1" origin="" out=""
+  origin="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
+  [[ -z "$origin" ]] && return 1
+  out="$(git ls-remote --tags "$origin" 2>/dev/null | ver_sort_max)"
+  [[ -n "$out" ]] || return 1
+  echo "$out"
+}

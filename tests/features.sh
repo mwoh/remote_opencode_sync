@@ -214,6 +214,25 @@ check "repo config pins model + fallback commands" "$(grep -q '"model": "opencod
 check "CONTINUE.md carries the running handoff" "$(grep -q '^## LAST SESSION' "$ROE/CONTINUE.md"; echo $?)" ""
 check "AGENTS.md carries the session-start rules header" "$(grep -q '^## 1\. Session start' "$ROE/AGENTS.md"; echo $?)" ""
 
+echo "== J. roe version reports installed vs latest =="
+check "semver sort picks v1.5.10 over v1.5.9 (with ^{} + junk filtered)" "$([[ "$(printf 'refs/tags/v1.5.9\nrefs/tags/v1.5.10\nrefs/tags/v1.5.5^{}\nfoo\n' | ver_sort_max)" == "v1.5.10" ]]; echo $?)" ""
+mkdir -p "$ROOT/J/tool/bin" "$ROOT/J/tool/scripts"
+cp "$ROE/bin/roe" "$ROOT/J/tool/bin/roe"
+cp "$ROE/scripts/lib.sh" "$ROOT/J/tool/scripts/lib.sh"
+git -C "$ROOT/J/tool" init -q -b main
+( cd "$ROOT/J/tool" && git add -A && git -c user.email=t@t -c user.name=t commit -qm base && git tag v1.5.4 )
+mkbare roletool
+tmpj="$(mktemp -d)"
+( cd "$tmpj" && git init -q -b main . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base && git tag v1.5.4 && git tag v1.5.5 && git push -q "$GH_FAKE_ROOT/$GH_FAKE_OWNER/roletool.git" main --tags )
+git -C "$ROOT/J/tool" remote add origin "$(ssh_url roletool)"
+"$ROOT/J/tool/bin/roe" version > "$ROOT/J/ver-up.out" 2>&1
+check "version prints installed + latest when behind" "$(grep -q 'remote_opencode_sync v1.5.4' "$ROOT/J/ver-up.out" && grep -q 'latest: v1.5.5' "$ROOT/J/ver-up.out"; echo $?)" ""
+check "version suggests roe update when behind" "$(grep -q 'roe update' "$ROOT/J/ver-up.out"; echo $?)" ""
+git -C "$ROOT/J/tool" -c user.email=t@t -c user.name=t commit -q --allow-empty -m later
+git -C "$ROOT/J/tool" tag v1.5.5
+"$ROOT/J/tool/bin/roe" version > "$ROOT/J/ver-ok.out" 2>&1
+check "version reports up to date when current" "$(grep -q 'up to date' "$ROOT/J/ver-ok.out"; echo $?)" ""
+
 echo
 echo "features.sh: $OK checks, $FAIL failed"
 exit $((FAIL ? 1 : 0))

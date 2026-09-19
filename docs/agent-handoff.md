@@ -8,8 +8,8 @@ detail that took real effort to learn.
 
 ## 1. Current state
 
-- **Latest release: v1.5.5** (tag `v1.5.5`). See the "Release history" table below.
-- Everything described in `PLAN.md`'s roadmap through v1.5.5 is implemented and shipped.
+- **Latest release: v1.5.6** (tag `v1.5.6`). See the "Release history" table below.
+- Everything described in `PLAN.md`'s roadmap through v1.5.6 is implemented and shipped.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -20,6 +20,7 @@ detail that took real effort to learn.
 
 | Tag | Commit essence | Notes |
 |-----|----------------|-------|
+| v1.5.6 | `roe version` reports installed + latest release (git tags; pure bash/awk; offline-graceful; sandbox-tested via fake origin) | features suite 75 → 79 checks |
 | v1.5.5 | the toolkit repo self-hosts its own workflow (marker, config, CONTINUE.md, session logs, rules header) — clone → `roe setup` → `opencode` = full handoff on any machine | features suite 71 → 75 checks (§I guards the self-host markers) |
 | v1.5.4 | adopt hardening (dirty-tree warning, origin-repoint notice, branch/default hint, `--follow-tags`); vendored tests + takeover guide + AGENTS.md; always-release cadence rule | features suite 61 → 71 checks |
 | v1.5.3 | fix `model_set` injection comma vs trailing `//` comment | comment-aware awk in `scripts/lib.sh` |
@@ -52,7 +53,7 @@ templates/
 docs/
   machine-setup.md, daily-workflow.md, scripts-reference.md, agent-handoff.md
 tests/                  VENDORED VERIFICATION HARNESSES (see §3)
-  features.sh              sandbox e2e (75 checks) using tests/shims/gh
+  features.sh              sandbox e2e (79 checks) using tests/shims/gh
   model-features.sh        model-helper regression (28 checks)
   plugin-test.mjs          plugin behaviour harness (15 checks)
   shims/gh                 fake `gh` for the sandbox (bare repos under $GH_FAKE_ROOT)
@@ -78,7 +79,7 @@ before any release; the sandbox suites clear fallback automatically.
 
 ```
 cd <repo-root>
-bash tests/features.sh        # 75 checks   (~40s; needs git, python3, node-agnostic)
+bash tests/features.sh        # 79 checks   (~45s; needs git, python3, node-agnostic)
 bash tests/model-features.sh  # 28 checks
 node tests/plugin-test.mjs    # 15 checks   (needs node)
 bash -n scripts/*.sh bin/roe tests/*.sh   # syntax sweep
@@ -135,7 +136,7 @@ separate scratch root (`/tmp/opencode/modeltest`) so it never collides with `fea
 
 Before any release:
 
-1. **Verify**: run all three suites + `bash -n` (§3). All green: features 75, model 28,
+1. **Verify**: run all three suites + `bash -n` (§3). All green: features 79, model 28,
    plugin 15.
 2. **Bump docs** — a version bump updates these **together, in the same commit**:
    - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)
@@ -205,7 +206,10 @@ Before any release:
 - **`roe` argument injection** (see `docs/scripts-reference.md`): `adopt` forwards
   `--existing <dir>` then your args; `projects`/`clone` forward the subcommand word then
   your args; `version`/`help`/`model` are handled inline in `bin/roe` (there is no
-  `model.sh`).
+  `model.sh`). `roe version` since v1.5.6 appends `latest: …` by `git ls-remote --tags`
+  against the toolkit's origin + `ver_sort_max`/`ver_gt` (awk, `lib.sh`) — update hints
+  only when the remote tag is strictly newer, and offline it prints `latest: unknown`
+  without erroring.
 - **Adopt hardening** (`scripts/new-project.sh`): adopting warns when the pre-existing tree
   is dirty and bundles those changes into the import commit (warn-and-continue, captured
   *before* seeding); replacing a foreign `origin` under `--force` names the old URL;

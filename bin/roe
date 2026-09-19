@@ -35,7 +35,7 @@ Usage: roe <command> [args...]
 
 Commands:
   help                 show this help
-  version              show the installed toolkit version
+  version              show installed + latest release (hints 'roe update' if behind)
   update               update the toolkit to the latest release
   setup | machine      one-time machine setup (prereqs, gh auth, ssh key, identity)
   new <name> [--setup] create & push a new project, then opencode into it
@@ -71,10 +71,22 @@ main() {
 
   case "$cmd" in
     version)
-      local v
-      v="$(git -C "$ROOT" describe --tags 2>/dev/null)"
+      local v latest vr
+      v="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null)"
       [[ -n "$v" ]] || v="$(git -C "$ROOT" log -1 --format=%h 2>/dev/null || echo unknown)"
       echo "remote_opencode_sync $v"
+      if latest="$(toolkit_latest_ver "$ROOT")"; then
+        vr="$(ver_gt "$latest" "$v")"
+        if [[ "$vr" == "1" ]]; then
+          echo "  latest: $latest  -> update with: roe update"
+        elif [[ "$latest" == "$v" ]]; then
+          echo "  latest: $latest (up to date)"
+        else
+          echo "  latest: $latest (local is ahead of the latest release)"
+        fi
+      else
+        echo "  latest: unknown (offline or no origin)"
+      fi
       ;;
     update)      require "$SC_UPDATE"  && exec "$SC_UPDATE" "$@" ;;
     setup|machine) require "$SC_SETUP" && exec "$SC_SETUP" "$@" ;;

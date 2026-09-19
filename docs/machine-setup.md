@@ -74,7 +74,7 @@ gh repo clone <you>/remote_opencode_sync
 ```
 git --version && gh --version && node --version && opencode --version
 ls ~/.config/opencode/plugins/
-roe version
+roe version     # shows installed + latest release (hints 'roe update' if behind)
 ```
 
 (If `roe` isn't found yet, it's because `~/.local/bin` wasn't on your `PATH` before — setup
@@ -98,7 +98,8 @@ will error at session start, exactly as it would if you picked that model manual
   from where the last session left off on any machine.
 - Create a new project from anywhere: `roe new <name>` (alias for
   `scripts/new-project.sh <name>`).
-- Update the toolkit later: `roe update`. Remove it: `roe uninstall` — it also removes the
+- Update the toolkit later: `roe version` first (compares installed vs latest release),
+  then `roe update`. Remove it: `roe uninstall` — it also removes the
   `roe` symlink and the PATH line setup added.
 
 ## What setup-machine.sh automates
