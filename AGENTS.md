@@ -34,7 +34,10 @@ suites (`bash tests/features.sh`, `bash tests/model-features.sh`,
 
 ## Conventions (see docs/agent-handoff.md §5 for the full list)
 
-- **Only commit, push, tag, or release when explicitly asked.** The user drives cadence.
+- **Commit, push, tag, and release as part of finishing the work — don't wait to be asked.**
+  Every coherent change set ships as a tagged release: label it `(vX.Y.Z)`, follow
+  `docs/agent-handoff.md` §4 end to end (all suites green, doc-sync, tag, SHA verify,
+  notes), push the tag + `main`, and call the release out in the summary.
 - Commit style: `type: <lowercase subject> (vX.Y.Z)` with `feat:`/`fix:`/`docs:`/`chore:`.
 - Runtime code stays **dependency-light bash** — no `jq`, `python`, or `node` in shipped
   scripts (`gh --template` for JSON, awk/sed for text). Python MAY appear only inside

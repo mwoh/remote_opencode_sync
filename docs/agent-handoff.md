@@ -136,7 +136,7 @@ Before any release:
    If any suite's check count changed since the last release, update the claimed counts
    in README, PLAN, this doc, and the release notes in the same change too.
 3. **Commit** with the repo's style: `type: <lowercase subject> (vX.Y.Z)` using one of
-   `feat:`, `fix:`, `docs:`, `chore:`. **Only commit when the user asks.**
+   `feat:`, `fix:`, `docs:`, `chore:`. Commit as part of the change set — no need to ask.
 4. **Tag** an annotated tag: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`
    (and push `main`).
 5. **Verify the bootstrap SHA at the tag** (regardless of whether `bootstrap.sh` changed):
@@ -169,7 +169,9 @@ Before any release:
 - **Test-count rule:** when a suite's check count changes, update the printed claim of
   that count everywhere it appears (README, PLAN, this doc, release notes) in the same
   change. A stale count is a bug.
-- **Only commit, push, tag, or release when explicitly asked.** The user drives cadence.
+- **Commit, push, tag, and release as part of finishing the work — don't wait to be asked.**
+  Every coherent change set ships as a tagged release (label `(vX.Y.Z)`); follow §4 end
+  to end, push the tag + `main`, and call the release out in the summary.
 - Commit-message style: `type(scope): summary` → actually the repo uses
   `type: summary (vX.Y.Z)` (no scope) for shipped versions; see `git log` for precedent.
 - Runtime code must stay **dependency-light bash** (no jq/python/node in scripts).
