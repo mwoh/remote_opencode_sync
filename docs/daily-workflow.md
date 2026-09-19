@@ -282,3 +282,4 @@ a network path between them. It complements, not replaces, git sync.
 | Project's seeded files have drifted (status says `seed: drifted`) | `roe upgrade` refills the missing/old seed files, keeping the model and your content |
 | Toolkit is behind (status says `toolkit: … run: roe update`) | `roe update`, then `roe status` again — projects may now need `roe upgrade` |
 | Which files actually sync here / stop one syncing | `roe track` — three panes (tracked / untracked-but-synced / ignored); ignore/unignore edits only the roe-owned `.gitignore` block |
+| Back up this machine's chat history / recover another machine's | `roe history backup` — archives into `opencode-history/<host>.jsonl.gz` in the repo; `roe history list` / `roe history show <id>` read any machine's archive (`/sync` reminds you if it's missing or >7 days old) |

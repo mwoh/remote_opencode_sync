@@ -82,6 +82,8 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `scripts/upgrade.sh` | `roe upgrade` — non-destructive refresh of a project's seed files to the current toolkit (marker, fallback commands preserving the pinned model, missing rules/ignore blocks, `session-logs/`); pulls first, commits + pushes the refresh, or "nothing to update" |
 | `scripts/track.sh` | `roe track` — see/change what a project syncs. Because the plugin's wip snapshot does `git add -A`, `.gitignore` is the true sync boundary; this edits only the `# --- added by remote_opencode_sync ---` block. `--list` (tracked / untracked-but-synced / ignored), `--ignore` (append pattern, + `git rm --cached` if tracked), `--unignore` (remove pattern, + `git add`); project resolved by `project_root` walk-up; escaping paths refused |
 | `scripts/track_tui.py` | curses TUI for `roe track` — python3 **standard-library only** (`curses`), a thin presentation layer that shells back to `track.sh` flags (the single source of truth); falls back to the text report when python3/`curses` is unavailable or not a terminal |
+| `scripts/history.sh` | `roe history` — `backup`/`list`/`show` this machine's opencode session history for a project. `backup` exports the project's sessions from opencode's central db (read-only) to `opencode-history/<host>.jsonl.gz` inside the repo, so the archive syncs to every machine; `list`/`show` render an archived machine's sessions/transcripts. Project resolved by `project_root` walk-up; non-roe dirs refused |
+| `scripts/history.py` | read-only opencode-db exporter/reader behind `roe history` — python3 **standard-library only** (`sqlite3`/`json`/`gzip`), opens the db `mode=ro`, matches sessions to the project (worktree/directory), writes the rolling gzip JSONL archive; `show` renders markdown transcripts. All state mutation stays in bash |
 | `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key); links `roe` into `~/.local/bin` + PATH; writes the uninstall manifest used by `scripts/uninstall.sh` |
 | `scripts/uninstall.sh` | Reverse of setup: removes only what the install created (per the manifest), per-tool/auth/ssh questionnaire, `--dry-run`/`--yes` |
 | `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest, model pin: `model_resolve`/`model_set`/`model_get`, project seed detection: `project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`/`project_root`, comment-aware JSONC block injector: `jsonc_inject_block`) |
@@ -89,7 +91,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (145 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+| `tests/` | Vendored verification harnesses: `features.sh` (176 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Workflows
 
@@ -136,6 +138,15 @@ ignored), stop it (`--ignore`, appending the pattern and `git rm --cached` when 
 or let it back in (`--unignore`, removing the pattern and re-adding). Works from any
 subdirectory via the `project_root` walk-up; paths that escape the project root are
 refused. The interactive TUI (`scripts/track_tui.py`) is python3 stdlib `curses` only.
+
+### Session-history backups (`roe history`)
+opencode's conversations live in one local database (`~/.local/share/opencode/opencode.db`),
+not in the projects — so deleting that directory wipes the machine's chat history. `roe
+history backup` exports this project's sessions (read-only db) into a rolling compressed
+archive `opencode-history/<host>.jsonl.gz` inside the repo, which the normal sync carries to
+every machine; `roe history list|show` renders any machine's archived sessions. Recovery is
+reading/replaying the archive (opencode has no merge-a-db-back-in API). `/handoff` runs the
+backup; `/sync` warns when this machine's archive is missing or older than 7 days.
 
 ### New/unseen machine
 - **Stage 1 (once per machine):** `docs/machine-setup.md` or the lazy
@@ -188,5 +199,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.6 (`roe version` reports installed + latest release via git tags — pure bash/awk, offline-graceful, sandbox-tested against a fake origin; features suite 75 → 79 checks, all green)
 - [x] Released v1.5.7 (`roe status`/`roe pull`/`roe push`/`roe upgrade` — the sync-state advisory + manual in/out halves + non-destructive project seed refresh; shared project-seed detection helpers in `lib.sh`; features suite 79 → 115 checks, all green)
 - [x] Released v1.5.8 (`roe track` — see and change what a project syncs: tracked/untracked/ignored via the roe-owned `.gitignore` block, `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 standard library only), `project_root` walk-up in `lib.sh`, escape guard; features suite 115 → 145 checks (§L), all green)
+- [x] Released v1.5.9 (`roe history` — per-(project × machine) session-history backups: read-only export of opencode's db into `opencode-history/<host>.jsonl.gz` inside the repo (`scripts/history.py`, python3 standard library only) + `backup`/`list`/`show` bash front-end, `OPENCODE_DB` override, `project_root` walk-up; `/handoff` backs up and `/sync` warns when the archive is missing/stale; because archives are full transcripts, this public repo gitignores `opencode-history/` and `backup` prints a "will NOT sync" note when ignored — M9 test; features suite 145 → 176 checks (§M), all green)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume

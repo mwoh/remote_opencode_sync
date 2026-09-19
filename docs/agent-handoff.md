@@ -8,8 +8,8 @@ detail that took real effort to learn.
 
 ## 1. Current state
 
-- **Latest release: v1.5.8** (tag `v1.5.8`). See the "Release history" table below.
-- Everything described in `PLAN.md`'s roadmap through v1.5.8 is implemented and shipped.
+- **Latest release: v1.5.9** (tag `v1.5.9`). See the "Release history" table below.
+- Everything described in `PLAN.md`'s roadmap through v1.5.9 is implemented and shipped.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -20,6 +20,7 @@ detail that took real effort to learn.
 
 | Tag | Commit essence | Notes |
 |-----|----------------|-------|
+| v1.5.9 | `roe history` — per-(project × machine) session-history backups. opencode keeps every project's conversations in one local db (`~/.local/share/opencode/opencode.db`), which is *not* in any repo, so deleting it wipes the machine's history. `history.sh backup` reads the db **read-only** and writes a rolling `opencode-history/<host>.jsonl.gz` **inside the repo** (travels via normal sync); `list`/`show` render any machine's archive; `--host`/`OPENCODE_DB` overrides. `/handoff` backs up, `/sync` warns when the archive is missing/>7d. `scripts/history.py` is python3 stdlib only (second AGENTS.md carve-out) | features suite 145 → 176 checks (§M) |
 | v1.5.8 | `roe track` — see/change what a project actually syncs. Because the idle `wip:` snapshot does `git add -A`, `.gitignore` is the true sync boundary; `track` edits only the `# --- added by remote_opencode_sync ---` block. `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 **standard-library only** via a standing AGENTS.md carve-out); `project_root` walk-up in `lib.sh` (also lets status-style scripts accept subdirectories); escape guard | features suite 115 → 145 checks (§L) |
 | v1.5.7 | `roe status` / `roe pull` / `roe push` / `roe upgrade` — the sync-state advisory + manual in/out halves of the sync + a non-destructive per-project seed refresh. Shared seed-detection predicates in `lib.sh` (`project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`) and a comment-aware `jsonc_inject_block` restore the fallback commands while keeping the pinned model | features suite 79 → 115 checks (§K) |
 | v1.5.6 | `roe version` reports installed + latest release (git tags; pure bash/awk; offline-graceful; sandbox-tested via fake origin) | features suite 75 → 79 checks |
@@ -47,6 +48,8 @@ scripts/
   status.sh             `roe status` — valid project? what does it need? (0/2/1 exit)
   pull.sh / push.sh     manual in/out halves of the sync (stash-safe rebase / non-FF-safe push)
   upgrade.sh            non-destructive refresh of a project's seed files to the current toolkit
+  track.sh / track_tui.py  `roe track` sync-scope list/ignore/unignore + curses TUI (python3 stdlib)
+  history.sh / history.py  `roe history` per-machine session-history backup/list/show (db read-only; python3 stdlib)
   desync.sh / resync.sh local-only opt-out of sync and its undo
   uninstall.sh          remove only what install created (manifest-driven)
   lib.sh                shared helpers (model pin, pkg mgr, placeholders, manifest, project seed detection, jsonc block inject)
@@ -58,7 +61,7 @@ templates/
 docs/
   machine-setup.md, daily-workflow.md, scripts-reference.md, agent-handoff.md
 tests/                  VENDORED VERIFICATION HARNESSES (see §3)
-  features.sh              sandbox e2e (145 checks) using tests/shims/gh
+  features.sh              sandbox e2e (176 checks) using tests/shims/gh
   model-features.sh        model-helper regression (28 checks)
   plugin-test.mjs          plugin behaviour harness (15 checks)
   shims/gh                 fake `gh` for the sandbox (bare repos under $GH_FAKE_ROOT)
@@ -84,7 +87,7 @@ before any release; the sandbox suites clear fallback automatically.
 
 ```
 cd <repo-root>
-bash tests/features.sh        # 145 checks  (~60s; needs git, python3, node-agnostic)
+bash tests/features.sh        # 176 checks  (~60s; needs git, python3, node-agnostic)
 bash tests/model-features.sh  # 28 checks
 node tests/plugin-test.mjs    # 15 checks   (needs node)
 bash -n scripts/*.sh bin/roe tests/*.sh   # syntax sweep
@@ -132,11 +135,16 @@ Hard-won gotchas (do not "fix" these away):
 7. `scripts/lib.sh` and the runtime scripts are deliberately dependency-light: **no `jq`,
    no `python`, no node in shipped code** (`gh --template` renders JSON; awk/sed do text
    work). Python may appear only inside test assertions.
-   - **ONE standing exception (v1.5.8, user-approved):** the interactive `roe track` UI is
-     `scripts/track_tui.py` — a thin presentation layer over `track.sh`, python3
-     **standard-library only** (`curses`, no pip). Flag modes work everywhere and the TUI
-     falls back to the text report when python3/`curses`/a TTY is missing. All state
-     mutation still lives in bash (`track.sh`), which is the scriptable surface.
+   - **TWO standing exceptions (both user-approved, python3 standard-library only, no
+     pip):**
+     - v1.5.8: the interactive `roe track` UI is `scripts/track_tui.py` — a thin
+       presentation layer over `track.sh`, stdlib `curses`. Flag modes work everywhere and
+       the TUI falls back to the text report when python3/`curses`/a TTY is missing. All
+       state mutation stays in bash (`track.sh`), the scriptable surface.
+     - v1.5.9: `scripts/history.py` is the read-only opencode-db exporter/reader behind
+       `roe history` — stdlib `sqlite3`/`json`/`gzip`. It opens the db with a `mode=ro`
+       URI and must **never** write opencode state; all mutation/decision logic stays in
+       bash (`history.sh`).
 
 `model-features.sh` exercises `model_from_global` / `model_get` / `model_resolve` /
 `model_set` with controlled `HOME` values plus the `roe model` subcommand. It uses a
@@ -146,7 +154,7 @@ separate scratch root (`/tmp/opencode/modeltest`) so it never collides with `fea
 
 Before any release:
 
-1. **Verify**: run all three suites + `bash -n` (§3). All green: features 145, model 28,
+1. **Verify**: run all three suites + `bash -n` (§3). All green: features 176, model 28,
    plugin 15.
 2. **Bump docs** — a version bump updates these **together, in the same commit**:
    - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)
@@ -216,8 +224,9 @@ Before any release:
 - **`roe` argument injection** (see `docs/scripts-reference.md`): `adopt` forwards
   `--existing <dir>` then your args; `projects`/`clone` forward the subcommand word then
   your args; `status`/`pull`/`push`/`upgrade` are complete pass-through (one optional
-  target dir, defaulting to the current directory); `track` is complete pass-through too,
-  though its project resolution walks up to the marker rather than defaulting to the cwd;
+  target dir, defaulting to the current directory); `track` and `history` are complete
+  pass-through too, though their project resolution walks up to the marker rather than
+  defaulting to the cwd (`history` also takes its own `backup`/`list`/`show` subcommand);
   `version`/`help`/`model` are handled
   inline in `bin/roe` (there is no `model.sh`). `roe version` since v1.5.6 appends
   `latest: …` by `git ls-remote --tags` against the toolkit's origin + `ver_sort_max`/
@@ -273,6 +282,25 @@ Before any release:
   back to `track.sh --list`/`--ignore`/`--unignore` (the tested/scriptable surface), so a
   bug in the UI can't corrupt a repo. It must stay python3 standard-library-only; the TUI
   falls back to `--list` output when `curses`, a TTY, or python3 is missing.
+- **`roe history` never writes opencode's db** (`history.py`): it opens
+  `~/.local/share/opencode/opencode.db` (or `$OPENCODE_DB`/`--db`) with a `mode=ro` URI.
+  The archive `<project>/opencode-history/<host>.jsonl.gz` is a **rolling** file per
+  machine — re-running `backup` overwrites it, so the repo stays small. Sessions are
+  matched to the project by `project.worktree` / `project_directory.directory` /
+  `session.directory`; a different project on the same machine is never included (this
+  matching is a §M test invariant). If opencode ever moves its db schema, matching — not
+  the read-only guarantee — is what to re-check.
+- **`opencode-history/` normally stays committed and un-ignored** (it travels via the
+  normal sync) — don't let it land in the roe `.gitignore` block, and keep it out of
+  `track --ignore`; the `/sync` 7-day nag only works if the archive is really in the repo.
+  **Exception: a public repo.** An archive is the full raw transcript, so this toolkit's own
+  public repo gitignores `opencode-history/` (`roe track --ignore opencode-history`).
+  `history.sh backup` runs `git check-ignore` and prints a "will NOT sync" note in that case
+  (the M9 test invariant), so a user is never silently misled. Keep project repos private.
+- **Recovery is read/replay, not a db merge**: opencode exposes no supported way to merge
+  an archived db fragment back in. `roe history show` gives readable transcripts and the
+  JSONL keeps every message/part's raw JSON for future tooling — never claim byte-level
+  restore in docs.
 - **`jsonc_inject_block`** (lib.sh, v1.5.7) generalizes the `model_set` comment-aware awk:
   it inserts a multi-line block before the final closing brace, adding the separator comma
   to the previous element and respecting trailing `//` comments. `roe upgrade` uses it to
@@ -301,9 +329,10 @@ Before any release:
 |---------|----------|
 | Why it exists / how it works | `PLAN.md`, `README.md` |
 | Per-script options & roe wiring | `docs/scripts-reference.md` |
-| Day-to-day flows (resume, handoff, desync, track) | `docs/daily-workflow.md` |
+| Day-to-day flows (resume, handoff, desync, track, history) | `docs/daily-workflow.md` |
 | Installing a machine | `docs/machine-setup.md` |
 | Verifying changes | `tests/` (this §3), release notes |
 | Plugin behaviour & its quiet gating | `plugins/session-sync.js` |
 | Seeding/conflict resolution | `scripts/new-project.sh`, `templates/` |
 | Sync-scope / `.gitignore` roe-block editing | `scripts/track.sh`, `scripts/track_tui.py` |
+| Session-history backups / opencode db | `scripts/history.sh`, `scripts/history.py` |

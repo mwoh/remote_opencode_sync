@@ -18,7 +18,10 @@
   and injects CONTINUE.md + the session log into compaction. If the plugin isn't
   installed, do the `git pull --rebase` yourself.
 - Finish each task as a coherent change set (below) — commit + push, and keep the
-  LAST SESSION block in `CONTINUE.md` fresh so any machine can continue.
+  LAST SESSION block in `CONTINUE.md` fresh so any machine can continue. Wrap a session
+  by running `roe history backup` so this machine's conversation history is archived in
+  `opencode-history/<host>.jsonl.gz`; the `sync`/`handoff` commands nag when it is missing
+  or older than 7 days.
 
 ## The #1 rule: never leave anything stale
 
@@ -54,10 +57,12 @@ suites (`bash tests/features.sh`, `bash tests/model-features.sh`,
 - Commit style: `type: <lowercase subject> (vX.Y.Z)` with `feat:`/`fix:`/`docs:`/`chore:`.
 - Runtime code stays **dependency-light bash** — no `jq`, `python`, or `node` in shipped
   scripts (`gh --template` for JSON, awk/sed for text). Python MAY appear only inside
-  test assertions. **Only exception:** `scripts/track_tui.py` — python3
-  **standard-library only** (`curses`, no pip), purely the interactive `roe track` UI, a
-  thin presentation layer over bash; flag modes work everywhere and the TUI falls back to
-  a text report when python3 is unavailable.
+  test assertions. **Only exceptions:** `scripts/track_tui.py` (python3 **standard-library
+  only** `curses`, no pip — the interactive `roe track` UI, a thin presentation layer over
+  bash with a text-report fallback) and `scripts/history.py` (python3 standard-library
+  `sqlite3`/`json`/`gzip` only — reads opencode's session db **read-only** and writes the
+  `opencode-history/<host>.jsonl.gz` archive; all state mutation stays in bash
+  `scripts/history.sh`). Both fall back/error gracefully when python3 is unavailable.
 - Don't break the detection markers: `.opencode/toolkit` containing `remote_opencode_sync`,
   the `## 1. Session start` rules header, and the `.gitignore` scaffold marker — the
   plugin, `projects.sh`, `desync.sh`, and `new-project.sh` all key off them.

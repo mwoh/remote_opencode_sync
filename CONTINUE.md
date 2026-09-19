@@ -8,46 +8,53 @@ read ONLY this plus commit history to re-orient._
 
 - **Machine:** squirtle (this machine)
 - **Date:** 2026-09-19
-- **Summary:** Shipped v1.5.8 — `roe track`, what a project actually syncs:
-  - Because the plugin's idle `wip:` snapshot does `git add -A`, `.gitignore` is the true
-    sync boundary. `roe track [dir]` (scripts/track.sh) shows three states — tracked /
-    untracked-but-synced / ignored — and moves files between them: `--list` prints the
-    plain lists; `--ignore <path>…` appends the pattern to the roe `.gitignore` block
-    (+ `git rm --cached` when tracked, file stays on disk); `--unignore <path>…` removes
-    the rule (+ `git add`). **Only** the `# --- added by remote_opencode_sync ---` block
-    is ever edited; user rules elsewhere are reported and `--unignore` refuses them (exit 1).
-  - `roe track` with no flags runs `scripts/track_tui.py` — a curses TUI (python3
-    **standard-library only**, AGENTS.md carve-out; presentation-only, shells back to
-    `track.sh`). Three panes, Tab/1-2-3, arrows/jk, Enter/Space toggle, r refresh, ? help,
-    q quit; header `project: <basename> · root: <abs>`.
-  - Project resolution walks up (`project_root` added to lib.sh) so it works from any
-    subdirectory; root-relative paths escaping the root are refused (exit 1); idempotent
-    re-ignore. Cross-machine caveat: rules propagate via push, gitignore never un-tracks
-    historical files on other machines by itself.
-  - `bin/roe` gained `track` dispatch; tests §L (10 checks: walk-up, three states,
-    dispatch + TTY fallback, ignore untracked/tracked, idempotent, unignore re-track,
-    user-rule refusal, escape refusal, not-a-project) + `py_compile` check; features suite
-    grew 115 → 145 checks (all green, plus model 28 / plugin 15 and clean `bash -n`);
-    TUI pty smoke-test quit rc=0.
-  - Doc-sync done: README (v1.5.8 pinned URL + track row + "What actually syncs" section),
-    PLAN.md (component table + roadmap), scripts-reference (track section + dispatch +
-    lib.sh helpers), daily-workflow (track row), agent-handoff (current state, release
-    history, 145 counts, §3/§6 gotchas: python carve-out, roe-block-only, cross-machine
-    caveat, walk-up).
+- **Summary:** Shipped v1.5.9 — `roe history`, per-(project × machine) session-history
+  backups, after a real incident: a prior session/agent advised deleting
+  `~/.local/share/opencode`, which wiped this machine's opencode chat history (only the
+  live session survived; no timeshift/trash). Assessment: nothing in the toolkit/plugin/
+  repo depends on that dir (`~/.config/opencode` plugin, `~/.local/state/opencode` state,
+  and `~/.opencode/bin/opencode` all live elsewhere) — the loss was history only.
+  - `scripts/history.py` (python3 **stdlib only**: `sqlite3`/`json`/`gzip`; second
+    AGENTS.md carve-out) opens opencode's db **read-only** (`mode=ro`) and exports only
+    **this project's** sessions (matched via `project.worktree` /
+    `project_directory.directory` / `session.directory`) to a rolling
+    `opencode-history/<host>.jsonl.gz` **inside the repo**, so normal sync carries every
+    machine's history to every machine. `scripts/history.sh` wraps it: `backup` / `list` /
+    `show <id>` (exact id or unique prefix, markdown transcript with `[tool: …]` markers),
+    `project_root` walk-up, refuses non-roe dirs, `--db`/`OPENCODE_DB` + `--host` overrides.
+  - Recovery is read/replay from the archive (opencode has no merge-db-back-in API) — the
+    raw JSONL keeps full fidelity; documented honestly.
+  - `/handoff` now runs `roe history backup` before its final commit; `/sync` **warns**
+    when this machine's archive is missing or >7 days old (the option-B nag). `AGENTS.md`
+    got the finish-each-task line + widened python carve-out.
+  - **Public-repo safety:** this toolkit repo is **public**, and an archive is the full raw
+    transcript — so `opencode-history/` is gitignored here (`roe track --ignore
+    opencode-history`). `backup` runs `git check-ignore` and prints a "will NOT sync" note
+    in that case (M9 test), so an ignored archive is never mistaken for a syncing one.
+    Private `roe new` projects keep the archive tracked (the default).
+  - `bin/roe` gained `history` dispatch; tests §M (backup, project scoping/exclusion,
+    rolling idempotency, list/show/prefix, walk-up, non-roe/missing-db/missing-archive
+    paths, roe dispatch) + `py_compile`; features suite grew 145 → 176 checks (all green,
+    plus model 28 / plugin 15 and clean `bash -n`).
+  - Doc-sync done: README (v1.5.9 pinned URL + history row/section + layout),
+    PLAN.md (component table + workflow + roadmap), scripts-reference (history section +
+    dispatch + exit codes), daily-workflow (row), agent-handoff (current state, release
+    history, 176 counts, §2/§5/§6 gotchas).
 - **NEXT STEPS:**
   - [ ] Run `roe setup` (scripts/setup-machine.sh) on every machine — installs the global
         session-sync plugin + git identity and links `roe`.
+  - [ ] Run `roe history backup` on the other machines **inside your private projects** so
+        each machine's history is archived in that project's repo. (This public toolkit repo
+        gitignores its own archive, so this machine's dev history here stays local-only.)
   - [ ] `roe new <name>` a real project and verify a full cross-machine resume end to end;
         use `roe track` on it to confirm the sync scope is what's expected.
-  - [ ] Try `roe status` in a real project and on an older seeded project, and `roe upgrade`
-        to bring it to the current seed (the first real-world upgrade sanity check).
   - [ ] opencode v2: intentionally deferred — do not port the plugin until the v2 plugin
         API stops changing (beta).
 
 ## Status
 
-The toolkit is complete for v1.5.8: workflow scripts + plugin + templates, seven releases,
-vendored verification suites (features 145 / model 28 / plugin 15), ops/takeover docs,
+The toolkit is complete for v1.5.9: workflow scripts + plugin + templates, eight releases,
+vendored verification suites (features 176 / model 28 / plugin 15), ops/takeover docs,
 and this repo is itself a toolkit project. Working tree clean at release.
 
 ## Open decisions
@@ -58,4 +65,4 @@ and this repo is itself a toolkit project. Working tree clean at release.
 
 ## Session log
 
-- 2026-09-19 — v1.5.4 released (adopt hardening + always-release cadence); v1.5.5 released (toolkit repo self-hosts its own workflow — clone anywhere → `roe setup` → `opencode` = full handoff; §I self-host tests, features 71 → 75); v1.5.6 released (`roe version` reports installed + latest release — §J, features 75 → 79); v1.5.7 released (`roe status`/`roe pull`/`roe push`/`roe upgrade` — §K e2e, seed-predicate helpers in lib.sh, comment-aware command-block injector; features 79 → 115); v1.5.8 released (`roe track` — sync-scope list/ignore/unignore + curses TUI, `project_root` walk-up in lib.sh, roe-block-only `.gitignore` edits, escape guard; §L e2e + py_compile, features 115 → 145).
+- 2026-09-19 — v1.5.4 released (adopt hardening + always-release cadence); v1.5.5 released (toolkit repo self-hosts its own workflow — clone anywhere → `roe setup` → `opencode` = full handoff; §I self-host tests, features 71 → 75); v1.5.6 released (`roe version` reports installed + latest release — §J, features 75 → 79); v1.5.7 released (`roe status`/`roe pull`/`roe push`/`roe upgrade` — §K e2e, seed-predicate helpers in lib.sh, comment-aware command-block injector; features 79 → 115); v1.5.8 released (`roe track` — sync-scope list/ignore/unignore + curses TUI, `project_root` walk-up in lib.sh, roe-block-only `.gitignore` edits, escape guard; §L e2e + py_compile, features 115 → 145); v1.5.9 released (`roe history` — per-machine session-history backups from a read-only opencode-db export into `opencode-history/<host>.jsonl.gz`, `/handoff` backup + `/sync` stale nag, second python-stdlib carve-out; §M e2e, features 145 → 176).

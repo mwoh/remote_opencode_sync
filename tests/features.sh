@@ -391,6 +391,119 @@ mkdir -p "$L/plain" && git -C "$L/plain" init -q -b main
 expect_exit "track on a non-roe dir exits 1" 1 $? "$(tail -n1 "$L/l10.out")"
 check "refusal names the marker" "$(grep -q 'not a remote_opencode_sync project' "$L/l10.out"; echo $?)" ""
 
+echo "== M. roe history — per-machine session-history archive =="
+M="$ROOT/M"
+HIST="$ROE/scripts/history.sh"
+mkdir -p "$M/proj/sub" "$M/other" "$M/plain" "$M/db"
+( cd "$M/proj" && git init -q -b main )
+mkdir -p "$M/proj/.opencode"
+printf 'remote_opencode_sync\n' > "$M/proj/.opencode/toolkit"
+git -C "$M/plain" init -q -b main
+DB="$M/db/opencode.db"
+python3 - "$DB" "$M/proj" "$M/other" <<'PY'
+import sqlite3, sys
+db, proj, other = sys.argv[1:4]
+c = sqlite3.connect(db)
+c.executescript(
+    "create table project(id text, worktree text);"
+    "create table project_directory(project_id text, directory text);"
+    "create table session(id text, project_id text, directory text, parent_id text,"
+    " title text, agent text, model text, time_created integer, time_updated integer);"
+    "create table message(id text, session_id text, time_created integer, data text);"
+    "create table part(id text, message_id text, session_id text, time_created integer, data text);"
+)
+c.executemany("insert into project values(?,?)", [("pa", proj), ("pb", other)])
+c.executemany("insert into project_directory values(?,?)", [("pa", proj), ("pb", other)])
+S = [
+    ("ses_first", "pa", proj, "Alpha first", '{"id":"opencode/big-pickle"}', 1000, 2000),
+    ("ses_second", "pa", proj, "Alpha second", '', 3000, 4000),
+    ("ses_other", "pb", other, "Other project", '', 5000, 6000),
+]
+c.executemany(
+    "insert into session(id,project_id,directory,title,model,time_created,time_updated)"
+    " values(?,?,?,?,?,?,?)", S)
+MESSAGES = [
+    ("msg1", "ses_first", 1000, '{"role":"user"}'),
+    ("msg2", "ses_first", 1100, '{"role":"assistant"}'),
+    ("msg3", "ses_second", 3000, '{"role":"user"}'),
+    ("msg4", "ses_other", 5000, '{"role":"user"}'),
+]
+c.executemany("insert into message values(?,?,?,?)", MESSAGES)
+PARTS = [
+    ("part1", "msg1", "ses_first", 1000, '{"type":"text","text":"hello alpha"}'),
+    ("part2", "msg2", "ses_first", 1100, '{"type":"tool","tool":"bash","state":"ran"}'),
+    ("part3", "msg2", "ses_first", 1101, '{"type":"text","text":"reply alpha"}'),
+    ("part4", "msg3", "ses_second", 3000, '{"type":"text","text":"second question"}'),
+    ("part5", "msg4", "ses_other", 5000, '{"type":"text","text":"should not appear"}'),
+]
+c.executemany("insert into part values(?,?,?,?,?)", PARTS)
+c.commit()
+PY
+ARCH="$M/proj/opencode-history/testhost.jsonl.gz"
+
+echo "  M1: the python helper compiles (python3 stdlib only)"
+check "history.py compiles" "$(python3 -m py_compile "$ROE/scripts/history.py" 2>/dev/null; echo $?)" ""
+
+echo "  M2: backup archives this project's sessions -- and only this project's"
+"$HIST" backup "$M/proj" --host testhost --db "$DB" > "$M/m2.out" 2>&1
+expect_exit "history backup exits 0" 0 $? "$(tail -n1 "$M/m2.out")"
+check "archive written under opencode-history/" "$([[ -f "$ARCH" ]]; echo $?)" "$(tail -n1 "$M/m2.out")"
+check "archive holds only this project's 2 sessions" "$([[ "$(gzip -dc "$ARCH" | grep -c .)" == "2" ]]; echo $?)" "$(gzip -dc "$ARCH" | wc -l)"
+check "other project's session is excluded" "$(! gzip -dc "$ARCH" | grep -q 'Other project'; echo $?)" ""
+check "own session content is present" "$(gzip -dc "$ARCH" | grep -q 'Alpha first'; echo $?)" ""
+
+echo "  M3: re-running backup is safe (idempotent rolling archive)"
+"$HIST" backup "$M/proj" --host testhost --db "$DB" > "$M/m3.out" 2>&1
+expect_exit "re-backup exits 0" 0 $? "$(tail -n1 "$M/m3.out")"
+check "still exactly one archive file" "$([[ "$(ls "$M/proj/opencode-history" | wc -l | tr -d ' ')" == "1" ]]; echo $?)" "$(ls "$M/proj/opencode-history")"
+check "still only this project's sessions" "$([[ "$(gzip -dc "$ARCH" | grep -c .)" == "2" ]]; echo $?)" ""
+
+echo "  M4: list renders the archive's sessions"
+"$HIST" list "$M/proj" --host testhost > "$M/m4.out" 2>&1
+expect_exit "history list exits 0" 0 $? "$(tail -n1 "$M/m4.out")"
+check "list names the machine" "$(grep -q 'machine: testhost' "$M/m4.out"; echo $?)" ""
+check "list shows both sessions" "$([[ "$(grep -cE 'Alpha first|Alpha second' "$M/m4.out")" == "2" ]]; echo $?)" ""
+check "list omits the other project" "$(! grep -q 'Other project' "$M/m4.out"; echo $?)" ""
+
+echo "  M5: show renders a readable transcript (exact id and unique prefix)"
+"$HIST" show ses_first "$M/proj" --host testhost > "$M/m5.out" 2>&1
+expect_exit "show <id> exits 0" 0 $? "$(tail -n1 "$M/m5.out")"
+check "transcript has a title heading" "$(grep -q '^# Alpha first' "$M/m5.out"; echo $?)" ""
+check "transcript includes message text" "$(grep -q 'hello alpha' "$M/m5.out"; echo $?)" ""
+check "transcript marks a tool call" "$(grep -q '\[tool: bash\]' "$M/m5.out"; echo $?)" ""
+"$HIST" show ses_fir "$M/proj" --host testhost > "$M/m5b.out" 2>&1
+expect_exit "show with a unique prefix exits 0" 0 $? "$(tail -n1 "$M/m5b.out")"
+"$HIST" show ses_ "$M/proj" --host testhost > "$M/m5c.out" 2>&1
+expect_exit "ambiguous prefix is refused (exit 1)" 1 $? "$(tail -n1 "$M/m5c.out")"
+
+echo "  M6: works from any subdirectory (project_root walk-up)"
+"$HIST" backup "$M/proj/sub" --host testhost --db "$DB" > "$M/m6.out" 2>&1
+expect_exit "backup from a subdir exits 0" 0 $? "$(tail -n1 "$M/m6.out")"
+check "walk-up wrote the project's archive" "$([[ -f "$ARCH" ]]; echo $?)" ""
+
+echo "  M7: failure paths are graceful"
+"$HIST" list "$M/proj" --host ghost > "$M/m7.out" 2>&1
+expect_exit "list with no archive exits 1" 1 $? "$(tail -n1 "$M/m7.out")"
+check "missing-archive message points at backup" "$(grep -q 'roe history backup' "$M/m7.out"; echo $?)" ""
+"$HIST" backup "$M/proj" --host testhost --db "$M/db/nope.db" > "$M/m7b.out" 2>&1
+expect_exit "missing db exits 1" 1 $? "$(tail -n1 "$M/m7b.out")"
+check "missing-db message says not found" "$(grep -q 'database not found' "$M/m7b.out"; echo $?)" ""
+"$HIST" backup "$M/plain" --host testhost --db "$DB" > "$M/m7c.out" 2>&1
+expect_exit "non-roe dir exits 1" 1 $? "$(tail -n1 "$M/m7c.out")"
+check "non-roe message names the marker" "$(grep -q 'not a remote_opencode_sync project' "$M/m7c.out"; echo $?)" ""
+
+echo "  M8: roe wires the history subcommand through"
+"$ROE/bin/roe" history backup "$M/proj" --host testhost --db "$DB" > "$M/m8.out" 2>&1
+expect_exit "roe history backup dispatches" 0 $? "$(tail -n1 "$M/m8.out")"
+"$ROE/bin/roe" history list "$M/proj" --host testhost > "$M/m8b.out" 2>&1
+expect_exit "roe history list dispatches" 0 $? "$(tail -n1 "$M/m8b.out")"
+
+echo "  M9: an ignored archive is flagged as non-syncing (public-repo safety)"
+printf 'opencode-history/\n' >> "$M/proj/.gitignore"
+"$HIST" backup "$M/proj" --host testhost --db "$DB" > "$M/m9.out" 2>&1
+expect_exit "backup still succeeds when ignored" 0 $? "$(tail -n1 "$M/m9.out")"
+check "safety note says it will not sync" "$(grep -q 'will NOT sync' "$M/m9.out"; echo $?)" ""
+
 echo
 echo "features.sh: $OK checks, $FAIL failed"
 exit $((FAIL ? 1 : 0))

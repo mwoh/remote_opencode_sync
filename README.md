@@ -46,7 +46,7 @@ on this machine, restart it to load the plugin.
 **Updates:** check what you have vs. the latest release first, then update:
 
 ```
-roe version     # "remote_opencode_sync v1.5.8" + latest -> roe update
+roe version     # "remote_opencode_sync v1.5.9" + latest -> roe update
 roe update
 ```
 
@@ -63,7 +63,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.8/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.9/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -88,6 +88,7 @@ need to remember the paths under `~/.local/share/remote_opencode_sync/scripts/` 
 | Push committed state out | `roe push [<dir>]` | `scripts/push.sh` |
 | Refresh a project's sync layer | `roe upgrade [<dir>]` | `scripts/upgrade.sh` — non-destructive |
 | See and change what a project syncs | `roe track [<dir>]` | `scripts/track.sh` — tracked/untracked/ignored (TUI + flags) |
+| Archive / view this machine's session history | `roe history <sub> [<dir>]` | `scripts/history.sh` — backup / list / show (per project × machine) |
 | Stop this machine syncing a copy | `roe desync` | `scripts/desync.sh` |
 | Undo desync | `roe resync` | `scripts/resync.sh` |
 | Uninstall | `roe uninstall` | `scripts/uninstall.sh` |
@@ -108,6 +109,7 @@ CONTINUE.md                 this repo's running handoff / cross-device memory
 LICENSE                     MIT
 opencode.jsonc              self-host config: pinned model + /resume, /handoff, /sync
 session-logs/               this repo's running session log
+opencode-history/           per-machine archived conversation history (synced with the project)
 .gitignore                  self-host ignore rules (deps, builds, secrets)
 .opencode/toolkit           self-host marker — this repo is itself a toolkit project
 templates/                  per-project files created/used by new-project.sh
@@ -133,6 +135,8 @@ scripts/
   upgrade.sh                `roe upgrade` — non-destructive refresh of a project's seed
   track.sh                  `roe track` — see/change what a project syncs (list, ignore, unignore, TUI)
   track_tui.py              curses TUI for `roe track` (python3 standard library only)
+  history.sh                `roe history` — backup/list/show this machine's session history for a project
+  history.py                read-only opencode-db exporter behind `roe history` (python3 stdlib only)
   desync.sh                 stop one working copy from syncing (local only)
   resync.sh                 undo a desync
   setup-machine.sh          lazy one-time machine setup
@@ -144,7 +148,7 @@ docs/
   scripts-reference.md      every script, its options, and how roe wires through
   agent-handoff.md          takeover guide: current state, tests, release process
 tests/
-  features.sh               145-check sandbox e2e (fake gh) — run before any release
+  features.sh               176-check sandbox e2e (fake gh) — run before any release
   model-features.sh         28-check model-helper regression
   plugin-test.mjs           15-check session-sync plugin harness
   shims/gh                  fake `gh` backing the sandbox
@@ -193,6 +197,10 @@ tests/
   that never travel) and moves files between those states by editing the
   remote_opencode_sync-managed `.gitignore` block; `roe update` (toolkit itself) and
   `roe upgrade` (a project) are different actions.
+- **`history.sh` / `history.py`** — `roe history` archives this machine's opencode
+  conversation history for a project into `opencode-history/<host>.jsonl.gz` (read-only db
+  export; the archive syncs with the repo so any machine can recover it), and renders it
+  back with `list`/`show`. The `sync`/`handoff` commands remind you when it is missing.
 - **`lib.sh`** — internal helpers (placeholder relink, package install/remove, uninstall
   manifest, model pin, project seed detection); you never call it directly.
 
@@ -260,7 +268,7 @@ opencode               # AGENTS.md -> docs/agent-handoff.md -> CONTINUE.md = ful
 
 Here, the session-sync plugin pulls/rebase at session start, `wip:`-backs up uncommitted work
 on idle, and injects `CONTINUE.md` into context compaction — in this repo as in any project.
-`tests/features.sh` §I keeps the self-host honest (the 145-check count includes it):
+`tests/features.sh` §I keeps the self-host honest (the 176-check count includes it):
 if the marker, config commands, `CONTINUE.md`, or rules header are removed, the suite fails.
 
 ## Creating a new project
@@ -467,6 +475,40 @@ unignoring re-adds it. Changes stay in the working tree (review them; the next c
 idle wip ships them). Caveat: the pattern propagates to every machine on the next push,
 but a file already in *history* on another machine stays "tracked" there until the next
 pull re-applies the rule — gitignore never un-tracks historical files on its own.
+
+## Session history backups: `roe history`
+
+Everything opencode remembers — every project's conversations — lives in one local
+database (`~/.local/share/opencode/opencode.db`), **not** in your git projects. So deleting
+that directory (a stray `rm -rf`, a bad suggestion) loses the whole machine's chat history.
+`roe history` closes that gap: it exports this machine's sessions for **this project** into
+a compressed archive *inside the repo*, so the normal sync carries it to every machine.
+
+```
+roe history backup [<dir>]        # archive this machine's sessions for the project
+roe history list   [<dir>]        # list the archived sessions (machine + project)
+roe history show <session-id> [<dir>]   # render one as a markdown transcript
+```
+
+- The archive is `opencode-history/<host>.jsonl.gz` — one rolling file per machine, keyed
+  by short hostname. It is read from the db **read-only** (nothing in opencode is ever
+  modified) and stays small because gzip + one-file-per-host.
+- Because it lives in the project, `git push`/`pull` (or the plugin's `wip:` snapshot)
+  copies it between machines. Any machine can then browse *another* machine's history for
+  the project with `roe history list` / `show` (fast-forward the archive's hostname with
+  `--host`).
+- The archive keeps the raw session/message/part JSON, so `show` gives you a readable
+  transcript and the file remains full-fidelity for future tooling. opencode has no
+  "merge a db back in" API, so recovery is reading/replaying from the archive — the tool
+  is honest about that rather than pretending a byte-level db restore.
+- `roe history backup` runs as part of `/handoff`, and `/sync` warns when this machine's
+  archive is missing or older than 7 days, so a machine that never archived gets noticed
+  before disaster rather than after.
+- **Privacy:** an archive is the **full raw transcript** (your prompts and tool output
+  included), so keep a project's repo **private**. This toolkit's own repo is public, so it
+  gitignores `opencode-history/` — `backup` prints a note when the archive is ignored, so
+  it never silently fails to sync.
+- Env: `OPENCODE_DB` overrides the db path (for a relocated opencode data dir).
 
 ## Pinned model
 

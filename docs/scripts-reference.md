@@ -37,6 +37,8 @@ even after you clone the repo elsewhere. `roe update` keeps that copy current.
 | `upgrade.sh`               | `roe upgrade [<dir>]`      | non-destructive refresh of a project's seed files |
 | `track.sh`                 | `roe track [<dir>]`        | see/change what a project syncs (list / ignore / unignore / TUI) |
 | `track_tui.py`             | (invoked by `track.sh`)    | curses TUI for `roe track` (python3 stdlib only) |
+| `history.sh`               | `roe history <sub> [<dir>]`| backup/list/show this machine's session history for a project |
+| `history.py`               | (invoked by `history.sh`)  | read-only opencode-db exporter/reader (python3 stdlib only) |
 | `desync.sh`                | `roe desync`               | freeze one working copy out of sync |
 | `resync.sh`                | `roe resync`               | undo a desync |
 | `uninstall.sh`             | `roe uninstall`            | remove the toolkit + what setup created |
@@ -59,20 +61,23 @@ update)      require "$SC_UPDATE"       && exec "$SC_UPDATE"     "$@" ;;
 status)      require "$SC_STATUS"       && exec "$SC_STATUS"     "$@" ;;
 pull)        require "$SC_PULL"         && exec "$SC_PULL"       "$@" ;;
 push)        require "$SC_PUSH"         && exec "$SC_PUSH"       "$@" ;;
-upgrade)     require "$SC_UPGRADE"    && exec "$SC_UPGRADE"    "$@" ;;
-track)       require "$SC_TRACK"     && exec "$SC_TRACK"      "$@" ;;
+upgrade)     require "$SC_UPGRADE"       && exec "$SC_UPGRADE"     "$@" ;;
+track)       require "$SC_TRACK"         && exec "$SC_TRACK"       "$@" ;;
+history)     require "$SC_HISTORY"       && exec "$SC_HISTORY"     "$@" ;;
 uninstall)   require "$SC_UNINSTALL"    && exec "$SC_UNINSTALL"  "$@" ;;
 ```
 
 There are only three shapes of argument handling to keep in mind:
 
 1. **Complete pass-through** — `roe new`, `roe setup`, `roe update`, `roe status`,
-   `roe pull`, `roe push`, `roe upgrade`, `roe track`, `roe desync`, `roe resync`,
-   `roe uninstall` forward `"$@"` unchanged. Anything the script accepts, `roe` accepts
-   identically, including `--help`. The five sync commands take one optional argument —
-   the project directory, defaulting to the current directory (`roe status ~/work/project`);
-   `roe track` also resolves the project by walking up to the marker, so it works from any
-   subdirectory.
+   `roe pull`, `roe push`, `roe upgrade`, `roe track`, `roe history`, `roe desync`,
+   `roe resync`, `roe uninstall` forward `"$@"` unchanged. Anything the script accepts,
+   `roe` accepts identically, including `--help`. The five sync commands take one optional
+   argument — the project directory, defaulting to the current directory (`roe status
+   ~/work/project`); `roe track` also resolves the project by walking up to the marker, so
+   it works from any subdirectory. `roe history` is pass-through to `history.sh` and takes
+   its own subcommand first (`roe history backup`, `roe history list`, `roe history show
+   <id>`), likewise walked up to the marker.
 
 2. **A fixed prefix injected by `roe`** — three commands prepend a word before
    forwarding your args:
@@ -400,6 +405,64 @@ the root, or a `--unignore` asked to modify a rule outside the roe block.
 
 Env: none.
 
+## `history.sh` + `history.py` — per-machine session-history backups
+
+```
+roe history backup [<dir>] [--db <path>] [--host <name>]   # archive this machine's sessions
+roe history list   [<dir>] [--host <name>]                 # list archived sessions
+roe history show <session-id> [<dir>] [--host <name>]      # markdown transcript
+```
+
+Why this exists: opencode stores **all** conversation history for **all** projects in one
+local SQLite db (`~/.local/share/opencode/opencode.db`), not in your git projects — so
+deleting that directory (a stray `rm -rf`, bad advice) loses the machine's entire chat
+history. `history.sh` closes that hole: it exports **this project's** sessions for the local
+machine into a compressed archive **inside the repo**, which the normal sync (or the idle
+`wip:` snapshot) carries to every machine.
+
+| Piece | What it does |
+|-------|--------------|
+| archive path | `<project>/opencode-history/<host>.jsonl.gz` — one **rolling** file per machine, keyed by short hostname (`--host` overrides) |
+| `backup` | reads the db **read-only** (`mode=ro`), matches sessions to the project (by `project.worktree`, `project_directory.directory`, or `session.directory`), writes one JSONL record per session with every message and part's raw JSON |
+| `list` | prints the archive's sessions (time · title · id · agent · message count) — no db touched |
+| `show <id>` | renders one session as a markdown transcript (text/reasoning, `[tool: …]` markers); accepts an exact id or a **unique prefix** |
+
+Key behaviours:
+
+- **It never writes opencode's db.** `history.py` opens it with a `mode=ro` URI; anything
+  that would mutate state stays in bash. This mirrors `track_tui.py` being
+  presentation-only.
+- **Only this project.** Sessions are matched by the working-tree/directory recorded in the
+  db, so one machine's history for a *different* project is never included.
+- **It works from any subdirectory** (`project_root` walk-up, like `roe track`) and refuses
+  a directory without the `.opencode/toolkit` marker (exit 1).
+- **Cross-machine recovery:** because the archive is committed in the project, any machine
+  sees every machine's archive. `roe history list --host <other>` and
+  `roe history show <id> --host <other>` read another machine's history. opencode has no
+  "merge a db back in" API, so recovery is reading/replaying the transcript — the raw JSONL
+  is kept for full fidelity and future tooling.
+- **`/handoff` runs `roe history backup`** before its final commit; **`/sync` warns** when
+  this machine's archive is missing or older than 7 days. That makes a forgetful machine
+  visible before a disaster rather than after.
+- **Privacy — an archive is the full raw transcript** (prompts + tool output). Keep a
+  project's repo **private**. If `opencode-history/` is gitignored (as in this toolkit's own
+  public repo, via `roe track --ignore opencode-history`), `backup` still writes the archive
+  locally but prints a `will NOT sync` note — so an ignored archive is never mistaken for a
+  syncing one.
+- Re-running `backup` is idempotent (overwrites the host's single archive).
+
+| Option | Meaning |
+|--------|---------|
+| `<dir>` | project (default: cwd; walked up to the `.opencode/toolkit` marker) |
+| `--db <path>` | opencode db to read (**backup only**; default `$OPENCODE_DB` or `~/.local/share/opencode/opencode.db`) |
+| `--host <name>` | machine key for the archive filename (default: `hostname -s`) |
+| `-h`, `--help` | usage |
+
+Exit codes: `0` success; `1` not a roe project, db not found/unusable, no archive for the
+requested host, or no/ambiguous session match.
+
+Env: `OPENCODE_DB` — override the opencode database path.
+
 ## `desync.sh` — opt one machine's copy out of sync
 
 ```
@@ -535,6 +598,8 @@ ROE_PROJECTS_TTL=30 roe projects --refresh             # nudge the cache TTL
   `roe status && roe pull` a safe scriptable gate.
 - `track.sh` uses `0` success/no-op and `1` for not-a-roe-project / not-a-git-work-tree /
   escape / outside-the-roe-block, like the other scripts.
+- `history.sh` uses `0` success and `1` for not-a-roe-project / db missing or unusable /
+  no archive for the host / no-or-ambiguous session match.
 - `roe`: `0` on success; `2` for `roe help`/usage and unknown commands (and `roe model`
   with too many arguments). Anything the `exec`'d script returns passes through.
 - Scripts with `-h/--help` exit `0` when help is printed.

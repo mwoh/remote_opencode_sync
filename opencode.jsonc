@@ -12,14 +12,14 @@
       "template": "Run the session-start sync ritual: check git status, git pull --rebase, read CONTINUE.md, auto-reconcile any open session from another machine (write LAST SESSION, mark its log END, commit, push), then summarize where the project stands and the next steps."
     },
     "handoff": {
-      "description": "Finalize the current session: close session log, refresh CONTINUE.md, commit, push",
+      "description": "Finalize the current session: close session log, refresh CONTINUE.md, back up history, commit, push",
       "agent": "build",
-      "template": "Finalize this session: append a summary to today's session-log file and mark it END, refresh the CONTINUE.md LAST SESSION block, commit everything with a meaningful message, and push. Report the final commit."
+      "template": "Finalize this session: append a summary to today's session-log file and mark it END, refresh the CONTINUE.md LAST SESSION block, run `roe history backup` and note the archive path it reports (so this machine's conversation history is archived in opencode-history/<host>.jsonl.gz and travels with the repo), then commit everything with a meaningful message, and push. Report the final commit."
     },
     "sync": {
       "description": "Commit and push any pending changes now",
       "agent": "build",
-      "template": "Commit and push any pending changes with a meaningful message, refresh CONTINUE.md and the session log if changed, and report the resulting git log entry."
+      "template": "First check this machine's session-history archive: if `opencode-history/<host>.jsonl.gz` (host = this machine's short hostname) is missing from the repo or was last modified more than 7 days ago, warn the user that this machine's session history is not archived and tell them to run `roe history backup`. Then commit and push any pending changes with a meaningful message, refresh CONTINUE.md and the session log if changed, and report the resulting git log entry."
     }
   }
 }
