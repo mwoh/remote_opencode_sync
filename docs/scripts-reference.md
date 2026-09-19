@@ -220,7 +220,7 @@ Env: `MODEL_PIN`, `GITHUB_USER` (owner fallback), `GITHUB_SSH_BASE` (see below).
 ## `projects.sh` — discover & clone synced projects
 
 ```
-scripts/projects.sh list [--refresh] [name...]
+scripts/projects.sh list [--refresh] [--dir <path>] [--no-fetch] [name...]
 scripts/projects.sh clone <name|owner/name> [--dir <path>]
 ```
 
@@ -235,10 +235,28 @@ the JSON).
   `~/.cache/remote_opencode_sync/projects.json`, TTL 900s) with a header of
   `owner=`, `fetched_at=`, then tab-separated rows.
 - `--refresh` forces a rescan. An optional `name...` filters by substring.
+- **Local copies**: each listed repo is annotated with whether (and where) it already
+  exists locally, and that copy's state. The scan root is `--dir <path>` if given, else the
+  current directory, or a project's parent when run from inside a project (so siblings are
+  found). Only the root itself and its immediate children are inspected; a child counts if
+  it carries the `.opencode/toolkit` marker. Local copies are matched to repos by their git
+  origin basename (`x.git`→`x`), falling back to the directory name — a renamed clone dir
+  still matches.
+  - The `LOCAL` column shows `-` (not here), `here`, or `./dir`, plus a state:
+    `clean` / `dirty N` / `ahead N` / `behind N` / `diverged (A ahead, B behind)` /
+    `unknown (no upstream)` / `unknown (not a git work tree)`, prefixed `desynced · ` on
+    the local opt-out.
+  - **Each local copy is `git fetch`ed by default** so the state is accurate (the remote
+    repo scan stays cached; only local copies are fetched). `--no-fetch` uses local
+    tracking refs instead — faster, possibly stale. A failed fetch renders `offline?`.
+  - A trailing **"other local roe projects"** section lists local projects whose name
+    didn't match any repo in your GitHub list (unpublished, a different owner, or a
+    failed/offline remote scan).
 - Offline fallback: if a live scan fails but a cache exists, it shows the cached rows
   with a note; with no cache at all it errors, printing the underlying `gh:` stderr line.
   It suggests `roe setup` **only** when `gh auth status` actually fails, so a non-auth
-  failure (network drop, bad flag) isn't misdiagnosed as an auth problem.
+  failure (network drop, bad flag) isn't misdiagnosed as an auth problem. The local
+  section is still printed even when the remote scan fails.
 
 ### `clone`
 - Verifies the `owner/name` carries the marker before touching anything.
@@ -582,6 +600,8 @@ roe adopt . --name legacy --resolve ask --no-scan       # adopt with tuned confl
 roe adopt legacy --force                                # repoint an existing origin
 roe projects --refresh                                  # bypass the cache
 roe projects docs                                      # substring filter
+roe projects --dir ~/Projects                          # scan a different root for local copies
+roe projects --no-fetch                                 # skip fetching local copies (faster)
 roe clone docs --dir ../proj/docs                       # clone into a specific path
 roe clone bob/design-notes                              # clone a repo owned by someone else
 roe desync -y                                           # non-interactive freeze-out

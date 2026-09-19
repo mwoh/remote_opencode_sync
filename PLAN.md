@@ -77,6 +77,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `scripts/update.sh` | Update an already-installed toolkit |
 | `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`, `--model`) |
 | `scripts/status.sh` | `roe status` — read-only advisory: is a directory a valid roe project, and what does it need (push/pull/diverged/dirty/desync/seed-drift/toolkit-update)? Exit 0 current · 1 not a roe project · 2 action needed |
+| `scripts/projects.sh` | `roe projects` — list your GitHub repos carrying the marker, annotating each with whether/where a local copy exists under the scan root (cwd, a project's parent when run inside one, or `--dir`) and its state (`clean`/`dirty N`/`ahead N`/`behind N`/`diverged`/`desynced`), plus a section for local roe projects not in the GitHub list; local copies matched by git origin, `git fetch`ed by default (`--no-fetch` opts out). `roe clone` clones a verified repo |
 | `scripts/pull.sh` | `roe pull` — fetch + clean `pull --rebase` with stash/pop (the plugin's session-start ritual, exposed manually) |
 | `scripts/push.sh` | `roe push` — push committed state; refuses a non-fast-forward (never clobbers remote work) |
 | `scripts/upgrade.sh` | `roe upgrade` — non-destructive refresh of a project's seed files to the current toolkit (marker, fallback commands preserving the pinned model, missing rules/ignore blocks, `session-logs/`); pulls first, commits + pushes the refresh, or "nothing to update" |
@@ -91,7 +92,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (177 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+| `tests/` | Vendored verification harnesses: `features.sh` (186 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Workflows
 
@@ -201,5 +202,6 @@ Not primary here since you typically run one machine at a time; details in
 - [x] Released v1.5.8 (`roe track` — see and change what a project syncs: tracked/untracked/ignored via the roe-owned `.gitignore` block, `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 standard library only), `project_root` walk-up in `lib.sh`, escape guard; features suite 115 → 145 checks (§L), all green)
 - [x] Released v1.5.9 (`roe history` — per-(project × machine) session-history backups: read-only export of opencode's db into `opencode-history/<host>.jsonl.gz` inside the repo (`scripts/history.py`, python3 standard library only) + `backup`/`list`/`show` bash front-end, `OPENCODE_DB` override, `project_root` walk-up; `/handoff` backs up and `/sync` warns when the archive is missing/stale; because archives are full transcripts, this public repo gitignores `opencode-history/` and `backup` prints a "will NOT sync" note when ignored — M9 test; features suite 145 → 176 checks (§M), all green)
 - [x] Released v1.5.10 (fix `roe projects` — `gh repo list` takes the owner positionally, not `--owner`; failed scans now surface the real `gh:` error and only suggest `roe setup` when auth is actually down; the `gh` shim mirrors real flag parsing so the class can't regress; features suite 176 → 177 checks (§F), all green)
+- [x] Released v1.6.0 (`roe projects` shows local presence + sync state — `LOCAL` column (`here`/`./dir`/`-` + `clean`/`dirty N`/`ahead N`/`behind N`/`diverged`/`desynced`), scan root = `--dir`/cwd/project's parent, local-only section, per-copy `git fetch` by default (`--no-fetch`), temp-TSV (no bash-3.2 assoc arrays); features suite 177 → 186 checks (§F F3), all green)
 - [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
 - [ ] `roe new` a real project and verify cross-machine resume

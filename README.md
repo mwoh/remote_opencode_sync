@@ -46,7 +46,7 @@ on this machine, restart it to load the plugin.
 **Updates:** check what you have vs. the latest release first, then update:
 
 ```
-roe version     # "remote_opencode_sync v1.5.10" + latest -> roe update
+roe version     # "remote_opencode_sync v1.6.0" + latest -> roe update
 roe update
 ```
 
@@ -63,7 +63,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.5.10/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.6.0/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -80,7 +80,7 @@ need to remember the paths under `~/.local/share/remote_opencode_sync/scripts/` 
 | One-time machine setup | `roe setup` | `scripts/setup-machine.sh` |
 | Create a new project | `roe new <name>` | `scripts/new-project.sh <name>` |
 | Adopt an existing folder | `roe adopt <dir>` | `scripts/new-project.sh --existing <dir>` |
-| List your synced projects | `roe projects` | `scripts/projects.sh list` |
+| List your synced projects | `roe projects` | `scripts/projects.sh list` — annotates local copies + state |
 | Clone a synced project | `roe clone <name>` | `scripts/projects.sh clone <name>` |
 | Pin the model used here | `roe model [<id>]` | rewrites the project's `opencode.jsonc` |
 | Check a project's sync state | `roe status [<dir>]` | `scripts/status.sh` — what needs push/pull/upgrade |
@@ -148,7 +148,7 @@ docs/
   scripts-reference.md      every script, its options, and how roe wires through
   agent-handoff.md          takeover guide: current state, tests, release process
 tests/
-  features.sh               177-check sandbox e2e (fake gh) — run before any release
+  features.sh               186-check sandbox e2e (fake gh) — run before any release
   model-features.sh         28-check model-helper regression
   plugin-test.mjs           15-check session-sync plugin harness
   shims/gh                  fake `gh` backing the sandbox
@@ -184,6 +184,12 @@ tests/
   blip mid-create/seed/commit/push is not fatal.
 - **`projects.sh`** — per request: scan the user's GitHub repos for the `.opencode/toolkit`
   marker (`roe projects`, with a short-lived cache) and clone a compatible repo (`roe clone`).
+  The list also shows which repos already exist **locally** under the scan root (this
+  directory, or a project's parent when run from inside one) and how current each copy is
+  (`clean` / `dirty N` / `ahead N` / `behind N` / `diverged` / `desynced`), with a tail
+  section for local roe projects that aren't in your GitHub list. Local copies are matched
+  by git origin (robust to renamed directories), and `git fetch`ed by default so the state
+  is accurate (`--no-fetch` to skip; `--dir <path>` to scan elsewhere).
 - **`desync.sh` / `resync.sh`** — per working copy: opt one machine's copy of a project out
   of the sync loop (`roe desync`) and bring it back (`roe resync`). Local-only, never pushed.
 - **`status.sh` / `pull.sh` / `push.sh` / `upgrade.sh` / `track.sh`** — `roe status` answers
@@ -268,7 +274,7 @@ opencode               # AGENTS.md -> docs/agent-handoff.md -> CONTINUE.md = ful
 
 Here, the session-sync plugin pulls/rebase at session start, `wip:`-backs up uncommitted work
 on idle, and injects `CONTINUE.md` into context compaction — in this repo as in any project.
-`tests/features.sh` §I keeps the self-host honest (the 177-check count includes it):
+`tests/features.sh` §I keeps the self-host honest (the 186-check count includes it):
 if the marker, config commands, `CONTINUE.md`, or rules header are removed, the suite fails.
 
 ## Creating a new project
@@ -341,10 +347,14 @@ Your GitHub account may hold many repos, but only the ones carrying the committe
 gates on). Discover them without cloning everything:
 
 ```
-roe projects            # list your synced projects (cached ~15 min)
+roe projects            # list your synced projects (cached ~15 min) + local copies
 roe projects --refresh  # force a fresh scan
 roe projects goals      # filter by substring
+roe projects --no-fetch # skip the per-local-copy fetch (faster, state may be stale)
 ```
+
+The `LOCAL` column marks a repo you already have here (`./name (clean)`, `(behind 2)`,
+`(dirty 1)`, …), so you can tell at a glance what's left to clone.
 
 Then clone one straight onto this machine — it arrives fully synced (the marker, the
 `AGENTS.md` rules, and the fallback commands all travel in the repo):

@@ -179,6 +179,32 @@ check "clone rejection suggests adopt" "$(grep -q 'roe adopt' "$ROOT/F2/clonep.o
 "$ROE/scripts/projects.sh" clone alpha > "$ROOT/F2/clone2.out" 2>&1
 expect_exit "clone of existing local dir refused" 1 $? "$(tail -n2 "$ROOT/F2/clone2.out")"
 
+echo "  F3: local presence + state"
+mkdir -p "$ROOT/F2/solo/.opencode"
+printf 'remote_opencode_sync\n' > "$ROOT/F2/solo/.opencode/toolkit"
+git -C "$ROOT/F2/solo" init -q -b main
+git -C "$ROOT/F2/solo" add -A
+git -C "$ROOT/F2/solo" -c user.email=t@t -c user.name=t commit -qm c
+
+( cd "$ROOT/F2" && "$ROE/scripts/projects.sh" list > "$ROOT/F2/loc.out" 2>&1 )
+expect_exit "projects list with locals exits 0" 0 $? "$(tail -n2 "$ROOT/F2/loc.out")"
+check "local clone annotated ./alpha" "$([[ "$(awk '$1=="alpha"{print $2}' "$ROOT/F2/loc.out")" == "./alpha" ]]; echo $?)" ""
+check "clean local clone reported clean" "$(awk '$1=="alpha"' "$ROOT/F2/loc.out" | grep -q 'clean'; echo $?)" ""
+check "uncloned repo shows no local copy" "$([[ "$(awk '$1=="plain1"{print $2}' "$ROOT/F2/loc.out")" == "-" ]]; echo $?)" ""
+check "local-only project listed separately" "$(grep -q 'other local roe projects' "$ROOT/F2/loc.out" && grep -q './solo' "$ROOT/F2/loc.out"; echo $?)" ""
+
+echo x > "$ROOT/F2/alpha/dirty.txt"
+( cd "$ROOT/F2" && "$ROE/scripts/projects.sh" list --no-fetch > "$ROOT/F2/loc2.out" 2>&1 )
+check "dirty local copy reported" "$(grep -q 'dirty 1' "$ROOT/F2/loc2.out"; echo $?)" ""
+check "--no-fetch skips the per-project fetch note" "$(! grep -q 'fetching each' "$ROOT/F2/loc2.out"; echo $?)" ""
+rm -f "$ROOT/F2/alpha/dirty.txt"
+
+( cd "$ROOT/F2/alpha" && "$ROE/scripts/projects.sh" list --no-fetch > "$ROOT/F2/loc3.out" 2>&1 )
+check "run inside a project scans its parent (siblings found)" "$(grep -q './solo' "$ROOT/F2/loc3.out"; echo $?)" ""
+
+( cd "$(mktemp -d)" && "$ROE/scripts/projects.sh" list --no-fetch --dir "$ROOT/F2" > "$ROOT/F2/loc4.out" 2>&1 )
+check "--dir scans an explicit root" "$(grep -q './solo' "$ROOT/F2/loc4.out"; echo $?)" ""
+
 echo "== G. desync / resync =="
 cd "$ROOT/F2/alpha"
 "$ROE/scripts/desync.sh" -y > "$ROOT/F2/desync.out" 2>&1

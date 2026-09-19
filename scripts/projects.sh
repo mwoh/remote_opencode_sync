@@ -2,14 +2,17 @@
 # projects.sh — list the user's GitHub repos that carry remote_opencode_sync support,
 # and clone one onto this machine.
 #
-#   projects.sh list [--refresh] [name...]     list synced projects
+#   projects.sh list [--refresh] [--dir <path>] [--no-fetch] [name...]
 #   projects.sh clone <name> [--dir <path>]    clone a synced project
 #
 # Detection: a project is "synced" iff its repo root carries the committed
 # `.opencode/toolkit` marker — the exact same marker the session-sync plugin gates
-# on, so this list can never disagree with what actually runs.
+# on, so this list can never disagree with what actually runs. Local copies under
+# the scan root are matched to remote repos by their git origin and annotated with
+# their sync state.
 #
-# No jq dependency: gh's --template rendering handles the JSON.
+# No jq dependency: gh's --template rendering handles the JSON. No associative
+# arrays either (macOS ships bash 3.2): locals are collected into a temp TSV.
 
 set -euo pipefail
 
@@ -22,6 +25,7 @@ CACHE_TTL="${ROE_PROJECTS_TTL:-900}"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/remote_opencode_sync"
 CACHE_FILE="$CACHE_DIR/projects.json"
 SCAN_ERR=""
+LOCALS_FILE=""
 
 usage() {
   cat <<EOF
@@ -31,9 +35,13 @@ Usage:
   projects.sh list [--refresh] [name...]
   projects.sh clone <name> [--dir <path>]
 
-  list      show your GitHub repos that carry the .opencode/toolkit marker.
-            Results are cached ${CACHE_TTL}s; --refresh rescans. An optional
-            name... arg filters by substring.
+  list      show your GitHub repos that carry the .opencode/toolkit marker,
+            annotated with whether (and where) each exists locally under the scan
+            root, and how current that copy is. Results are cached ${CACHE_TTL}s;
+            --refresh rescans; an optional name... filters by substring.
+            --dir <path>  scan here for local copies (default: this directory, or
+                          a project's parent when run from inside a project)
+            --no-fetch    don't `git fetch` local copies (faster; state may be stale)
   clone     clone a synced repo onto this machine (SSH). Offline after clone —
             the marker, rules and commands travel in the repo.
 EOF
@@ -72,6 +80,94 @@ scan() {
   done
 }
 
+# --- local project detection -------------------------------------------------
+
+# resolve_scan_root [<dir>] — the directory whose immediate children are scanned
+#   for local roe projects. Explicit <dir> wins; otherwise the current directory,
+#   except when run from inside a project, where the project's parent is used (so
+#   siblings are found). Echoes an absolute path.
+resolve_scan_root() {
+  local dir="$1" pr
+  if [[ -n "$dir" ]]; then
+    (cd "$dir" 2>/dev/null && pwd) || { echo "error: no such directory: $dir" >&2; return 1; }
+    return 0
+  fi
+  if pr="$(project_root "$PWD")"; then
+    dirname "$pr"
+  else
+    pwd
+  fi
+}
+
+# local_key <dir> — the repo name a local roe project maps to: the basename of
+#   its origin URL with a trailing .git stripped, else the directory name. This
+#   is robust to a renamed clone dir and to ssh/https/file:// origins.
+local_key() {
+  local d="$1" origin base
+  origin="$(git -C "$d" remote get-url origin 2>/dev/null || true)"
+  if [[ -n "$origin" ]]; then
+    base="${origin##*/}"
+    base="${base%.git}"
+    if [[ -n "$base" ]]; then echo "$base"; return 0; fi
+  fi
+  basename "$d"
+}
+
+# local_state <dir> <fetch> — one-line state: diverged (A ahead, B behind) /
+#   behind N / ahead N / dirty N / clean / unknown (no upstream), prefixed with
+#   "desynced · " on the local opt-out and suffixed "offline?" when a fetch fails.
+local_state() {
+  local d="$1" fetch="$2" st="" up ahead behind dirty core
+  if project_desynced "$d"; then st="desynced"; fi
+  if ! git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "${st:+$st · }unknown (not a git work tree)"
+    return 0
+  fi
+  up="$(git -C "$d" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+  if [[ -z "$up" ]]; then
+    echo "${st:+$st · }unknown (no upstream)"
+    return 0
+  fi
+  if [[ "$fetch" == "1" ]]; then
+    git -C "$d" fetch origin >/dev/null 2>&1 || st="${st:+$st · }offline?"
+  fi
+  ahead="$(git -C "$d" rev-list --count "$up..HEAD" 2>/dev/null || echo 0)"
+  behind="$(git -C "$d" rev-list --count "HEAD..$up" 2>/dev/null || echo 0)"
+  dirty="$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  dirty="${dirty:-0}"
+  if [[ "$behind" -gt 0 && "$ahead" -gt 0 ]]; then core="diverged ($ahead ahead, $behind behind)"
+  elif [[ "$behind" -gt 0 ]]; then core="behind $behind"
+  elif [[ "$ahead" -gt 0 ]]; then core="ahead $ahead"
+  elif [[ "$dirty" -gt 0 ]]; then core="dirty $dirty"
+  else core="clean"
+  fi
+  echo "${st:+$st · }$core"
+}
+
+# collect_locals <root> <fetch> — writes one "key<TAB>relpath<TAB>state" line per
+#   marker-bearing project found at <root> itself or in its immediate children.
+collect_locals() {
+  local root="$1" fetch="$2" d key rel state
+  : > "$LOCALS_FILE"
+  local -a cands=("$root")
+  for d in "$root"/*/; do
+    [[ -d "$d" ]] && cands+=("${d%/}")
+  done
+  for d in "${cands[@]}"; do
+    project_has_marker "$d" || continue
+    key="$(local_key "$d")"
+    if [[ "$d" == "$root" ]]; then rel="here"; else rel="./$(basename "$d")"; fi
+    state="$(local_state "$d" "$fetch")"
+    printf '%s\t%s\t%s\n' "$key" "$rel" "$state" >> "$LOCALS_FILE"
+  done
+}
+
+# local_of <key> — echoes "relpath<TAB>state" for the first local project matching
+#   <key>, or nothing.
+local_of() {
+  awk -F'\t' -v k="$1" '$1 == k { print $2 "\t" $3; exit }' "$LOCALS_FILE"
+}
+
 cache_fresh() {
   local own="$1" now fetched
   now="$(date +%s)"
@@ -106,19 +202,23 @@ refresh_cache() {
 }
 
 list_cmd() {
-  local own refresh=0
+  local own refresh=0 dir="" fetch=1
   local -a filters=()
-  for a in "$@"; do
-    case "$a" in
+  while (($#)); do
+    case "$1" in
       --refresh) refresh=1 ;;
+      --dir) shift; [[ $# -gt 0 ]] || { echo "error: --dir needs a value" >&2; return 1; }; dir="$1" ;;
+      --no-fetch) fetch=0 ;;
       --help|-h) usage; return 0 ;;
-      -*) echo "unknown option: $a" >&2; usage; return 1 ;;
-      *) filters+=("$a") ;;
+      -*) echo "unknown option: $1" >&2; usage; return 1 ;;
+      *) filters+=("$1") ;;
     esac
+    shift
   done
 
   own="$(owner || return 1)"
 
+  local remote_ok=1
   if [[ "$refresh" -eq 1 ]] || ! cache_fresh "$own"; then
     if ! refresh_cache "$own"; then
       if [[ -s "$CACHE_FILE" ]]; then
@@ -130,12 +230,22 @@ list_cmd() {
         if ! gh auth status >/dev/null 2>&1; then
           echo "  fix auth: run: roe setup" >&2
         fi
-        return 1
+        remote_ok=0
       fi
     else
       echo "  (scanned $own — cached)" >&2
     fi
   fi
+
+  # --- local copies under the scan root (independent of the remote scan) ---
+  local scan_root
+  if ! scan_root="$(resolve_scan_root "$dir")"; then return 1; fi
+  LOCALS_FILE="$(mktemp "${TMPDIR:-/tmp}/roe-locals.XXXXXX")"
+  trap 'rm -f "$LOCALS_FILE"' EXIT
+  if [[ "$fetch" -eq 1 ]]; then
+    echo "  local projects under $scan_root (fetching each)..." >&2
+  fi
+  collect_locals "$scan_root" "$fetch"
 
   local -a rows=()
   local line name priv arch synced desc total=0 synced_n=0
@@ -155,19 +265,44 @@ list_cmd() {
     fi
   done < <(cached_rows)
 
-  echo
-  echo "remote_opencode_sync projects for $own: $synced_n synced of $total"
-  echo
-  local first_col=""
-  printf '%-40s  %-9s  %s\n' "NAME" "PRIVATE" "DESCRIPTION"
-  for row in "${rows[@]}"; do
-    IFS=$'\t' read -r n p a s d <<< "$row"
-    local note=""
-    [[ "$a" == "true" ]] && note=" [archived]"
-    printf '%-40s  %-9s  %s%s\n' "$n" "$p" "$d" "$note"
-  done
-  echo
-  echo "  clone one:  roe clone <name>"
+  if [[ "$remote_ok" -eq 1 ]]; then
+    echo
+    echo "remote_opencode_sync projects for $own: $synced_n synced of $total"
+    echo
+    printf '%-38s  %-34s  %-8s  %s\n' "NAME" "LOCAL" "PRIVATE" "DESCRIPTION"
+    for row in "${rows[@]}"; do
+      IFS=$'\t' read -r n p a s d <<< "$row"
+      local note="" local_col="-" li=""
+      [[ "$a" == "true" ]] && note=" [archived]"
+      li="$(local_of "$n")"
+      if [[ -n "$li" ]]; then local_col="${li%%$'\t'*} (${li#*$'\t'})"; fi
+      printf '%-38s  %-34s  %-8s  %s%s\n' "$n" "$local_col" "$p" "$d" "$note"
+    done
+    echo
+    echo "  clone one:  roe clone <name>"
+  fi
+
+  # --- local roe projects absent from the remote list (unpublished / other owner / offline) ---
+  local -a extras=()
+  local ekey erel estate m
+  while IFS=$'\t' read -r ekey erel estate; do
+    [[ -z "$ekey" ]] && continue
+    if grep -Fxq "$ekey" <(cached_rows | cut -f1); then continue; fi
+    if [[ "${#filters[@]}" -gt 0 ]]; then
+      m=0
+      for f in "${filters[@]}"; do if [[ "$ekey" == *"$f"* ]]; then m=1; fi; done
+      [[ "$m" -eq 0 ]] && continue
+    fi
+    extras+=("$erel ($estate)")
+  done < <(awk -F'\t' '!seen[$1]++ { print }' "$LOCALS_FILE")
+
+  if [[ "${#extras[@]}" -gt 0 ]]; then
+    echo
+    echo "  other local roe projects under $scan_root (not in your GitHub list):"
+    for e in "${extras[@]}"; do echo "    $e"; done
+  fi
+
+  [[ "$remote_ok" -eq 1 ]] || return 1
 }
 
 clone_cmd() {

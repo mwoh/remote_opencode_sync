@@ -8,8 +8,8 @@ detail that took real effort to learn.
 
 ## 1. Current state
 
-- **Latest release: v1.5.10** (tag `v1.5.10`). See the "Release history" table below.
-- Everything described in `PLAN.md`'s roadmap through v1.5.10 is implemented and shipped.
+- **Latest release: v1.6.0** (tag `v1.6.0`). See the "Release history" table below.
+- Everything described in `PLAN.md`'s roadmap through v1.6.0 is implemented and shipped.
 - The repo is owned/administered by **`mwoh`** (`github.com/mwoh/remote_opencode_sync`).
   The bootstrap install SHA is pinned in each release's notes.
 - **Known open/next items** (see `PLAN.md` roadmap): run `roe setup` on the remaining
@@ -20,6 +20,7 @@ detail that took real effort to learn.
 
 | Tag | Commit essence | Notes |
 |-----|----------------|-------|
+| v1.6.0 | `roe projects` now shows **local presence + sync state**: each listed repo is annotated `LOCAL` with where it exists here (`here`/`./dir`/`-`) and its state (`clean`/`dirty N`/`ahead N`/`behind N`/`diverged`/`desynced`), plus a section for local roe projects absent from the GitHub list. Scan root = `--dir`, else cwd, else a project's parent when run inside one; local copies matched by git origin basename; `git fetch`ed per copy by default (`--no-fetch` opts out). Portability: temp-TSV, not associative arrays (bash 3.2) | features suite 177 → 186 checks (§F F3) |
 | v1.5.10 | fix `roe projects` — `gh repo list` takes the owner **positionally** (`gh repo list "$own"`), not `--owner`; the old form aborted every scan, so `roe projects` always failed with a misleading "network / auth down? / run: roe setup". A failed scan now captures gh's stderr and prints the real `gh:` error, only suggesting `roe setup` when `gh auth status` actually fails; the `gh` shim now mimics real flag parsing (rejects unknown flags like `--owner`) so this class can't slip through | features suite 176 → 177 checks (§F) |
 | v1.5.9 | `roe history` — per-(project × machine) session-history backups. opencode keeps every project's conversations in one local db (`~/.local/share/opencode/opencode.db`), which is *not* in any repo, so deleting it wipes the machine's history. `history.sh backup` reads the db **read-only** and writes a rolling `opencode-history/<host>.jsonl.gz` **inside the repo** (travels via normal sync); `list`/`show` render any machine's archive; `--host`/`OPENCODE_DB` overrides. `/handoff` backs up, `/sync` warns when the archive is missing/>7d. `scripts/history.py` is python3 stdlib only (second AGENTS.md carve-out) | features suite 145 → 176 checks (§M) |
 | v1.5.8 | `roe track` — see/change what a project actually syncs. Because the idle `wip:` snapshot does `git add -A`, `.gitignore` is the true sync boundary; `track` edits only the `# --- added by remote_opencode_sync ---` block. `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 **standard-library only** via a standing AGENTS.md carve-out); `project_root` walk-up in `lib.sh` (also lets status-style scripts accept subdirectories); escape guard | features suite 115 → 145 checks (§L) |
@@ -45,7 +46,7 @@ scripts/
   update.sh             update an installed toolkit (origin-guarded)
   setup-machine.sh      one-time machine setup; writes the uninstall manifest
   new-project.sh        create/adopt a synced project (resumable); seeds templates
-  projects.sh           list synced projects (marker-probed) + clone
+  projects.sh           list synced projects (marker-probed) + local copies/state + clone
   status.sh             `roe status` — valid project? what does it need? (0/2/1 exit)
   pull.sh / push.sh     manual in/out halves of the sync (stash-safe rebase / non-FF-safe push)
   upgrade.sh            non-destructive refresh of a project's seed files to the current toolkit
@@ -62,7 +63,7 @@ templates/
 docs/
   machine-setup.md, daily-workflow.md, scripts-reference.md, agent-handoff.md
 tests/                  VENDORED VERIFICATION HARNESSES (see §3)
-  features.sh              sandbox e2e (177 checks) using tests/shims/gh
+  features.sh              sandbox e2e (186 checks) using tests/shims/gh
   model-features.sh        model-helper regression (28 checks)
   plugin-test.mjs          plugin behaviour harness (15 checks)
   shims/gh                 fake `gh` for the sandbox (bare repos under $GH_FAKE_ROOT)
@@ -88,7 +89,7 @@ before any release; the sandbox suites clear fallback automatically.
 
 ```
 cd <repo-root>
-bash tests/features.sh        # 177 checks  (~60s; needs git, python3, node-agnostic)
+bash tests/features.sh        # 186 checks  (~60s; needs git, python3, node-agnostic)
 bash tests/model-features.sh  # 28 checks
 node tests/plugin-test.mjs    # 15 checks   (needs node)
 bash -n scripts/*.sh bin/roe tests/*.sh   # syntax sweep
@@ -132,6 +133,12 @@ Hard-won gotchas (do not "fix" these away):
    when adding a shimmed command, reject unknown flags the way the real CLI does.
 4. Optional `<name>.git.roe-meta` files set `private=` / `archived=` / `description=`
    metadata for the fake `repo list`.
+4b. **`roe projects` fetches every local copy by default** (v1.6.0). The scan root is
+   `--dir`, else cwd, else *a project's parent* when run from inside one; only the root +
+   immediate marker-bearing children are considered. Local copies are matched by git
+   origin basename (`x.git`→`x`) with a directory-name fallback, collected into a temp
+   TSV — **do not use associative arrays** (macOS bash 3.2). `--no-fetch` skips the
+   fetch. Tests: §F F3 in `features.sh` (clean/dirty/local-only/parent-heuristic/`--dir`).
 5. **The plugin fires fire-and-forget events**: `void syncStart()` / `void syncIdle()`.
    Harness assertions must **settle ~800 ms** after firing an event before reading results
    (`plugin-test.mjs` does this). Plugin log payloads arrive as `{ body: { level,
@@ -160,7 +167,7 @@ separate scratch root (`/tmp/opencode/modeltest`) so it never collides with `fea
 
 Before any release:
 
-1. **Verify**: run all three suites + `bash -n` (§3). All green: features 177, model 28,
+1. **Verify**: run all three suites + `bash -n` (§3). All green: features 186, model 28,
    plugin 15.
 2. **Bump docs** — a version bump updates these **together, in the same commit**:
    - `README.md`: the pinned "safer variant" install line (`…/vX.Y.Z/scripts/bootstrap.sh`)

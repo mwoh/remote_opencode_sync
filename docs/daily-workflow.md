@@ -64,13 +64,20 @@ roe adopt <dir> [--name <repo>] [--resolve append|ask|skip|overwrite] [--no-scan
 
 `roe projects` scans your GitHub account for repos carrying the committed
 `.opencode/toolkit` marker (the same marker the plugin runs on) and lists only those —
-nothing is cloned:
+nothing is cloned. It also annotates each repo with whether you already have it **locally**
+under the scan root (this directory, or a project's parent when run from inside one) and
+how current that copy is:
 
 ```
-roe projects            # list synced projects (cached ~15 min)
+roe projects            # list synced projects (cached ~15 min) + local copies/state
 roe projects --refresh  # rescan now
 roe projects goals      # filter by substring
+roe projects --no-fetch # skip fetching local copies (faster, state may be stale)
 ```
+
+The `LOCAL` column reads `./name (clean)`, `(behind 2)`, `(dirty 1)`, `(diverged …)`,
+`(desynced …)`, or `-` when you don't have that repo here; a trailing section lists local
+roe projects that aren't in your GitHub list at all.
 
 `roe clone <name>` verifies the repo is synced, clones it via SSH, and reminds you if
 `roe setup` is still needed on this machine:
