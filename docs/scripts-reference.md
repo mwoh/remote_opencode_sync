@@ -465,8 +465,8 @@ Key behaviours:
   this machine's archive is missing or older than 7 days. That makes a forgetful machine
   visible before a disaster rather than after.
 - **Privacy — an archive is the full raw transcript** (prompts + tool output). Keep a
-  project's repo **private**. If `opencode-history/` is gitignored (as in this toolkit's own
-  public repo, via `roe track --ignore opencode-history`), `backup` still writes the archive
+  project's repo **private**. If you must use a public repo, gitignore `opencode-history/`
+  there (via `roe track --ignore opencode-history`): `backup` still writes the archive
   locally but prints a `will NOT sync` note — so an ignored archive is never mistaken for a
   syncing one.
 - Re-running `backup` is idempotent (overwrites the host's single archive).

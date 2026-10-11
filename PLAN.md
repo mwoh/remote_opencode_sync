@@ -94,114 +94,25 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
 | `tests/` | Vendored verification harnesses: `features.sh` (186 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
-## Workflows
+## Distribution — two repos (since v1.7.0)
 
-### New project (run once, from any machine)
-1. `scripts/new-project.sh <name> [--setup] [--model <id>]`
-   - Pre-flight checks `git`, `gh`, and `gh auth`; fails fast with guidance
-     (points to `docs/machine-setup.md` / `scripts/setup-machine.sh`), or with
-     `--setup` hands off to the setup script automatically.
-   - Pins the opencode model in `opencode.jsonc` (from `--model` > `$MODEL_PIN` >
-     global opencode config > prompt; line omitted if unresolved).
-   - `gh repo create <name> --private --clone`, seeds the templates, first commit + push.
-2. `cd <name> && opencode` — plugin pulls (nothing to pull on day one), base prompt
-   orients you.
+`roe` ships as a **generated public distribution**, developed in a **private source repo**.
 
-### Adopt an existing directory (run once)
-`scripts/new-project.sh --existing <dir> [--name <repo>] [--resolve …] [--no-scan]
-[--force] [--model <id>]` — preserves history, seeds/workflow rules without clobbering
-(append by default), drops a FIRST STEP for the first session's scan-and-orient pass,
-pins the model in `opencode.jsonc` (an existing model is respected and kept), commits +
-pushes. Adopt hardening: warns when the pre-existing tree is dirty (those changes ride
-into the import commit), names the replaced `origin` under `--force`, pushes annotated
-tags (`--follow-tags`), and after the push hints when the pushed branch isn't the
-remote's default.
+| Repo | Visibility | Role |
+| --- | --- | --- |
+| `mwoh/remote_opencode_sync` | public | The distribution. Installed by `bootstrap.sh` (same URL, tags, and pins as always). Contains only what makes `roe` *run*. |
+| `mwoh/remote_opencode_sync-dev` | private | The source of truth. Full history, all development, all tests, plus this project's own `CONTINUE.md`, `session-logs/`, and committed `opencode-history/` archives. Changes are made and released here. |
 
-### Project updates (run from any machine)
-`roe update` (or re-run the bootstrap curl, or
-`~/.local/share/remote_opencode_sync/scripts/update.sh`) — pull toolkit, re-run setup
-(idempotent), re-link placeholders, restart opencode.
+This split exists because the archive `roe history` writes (`opencode-history/<host>.jsonl.gz`)
+is the **full raw transcript** — it must never land in a public repo, but it *should* travel
+between a private project's machines. Before v1.7.0 this repo was public and therefore had to
+gitignore its own archive; the private dev repo removes that exception. Because `history.py`
+matches sessions by project worktree, the private side must be a full clone of the project —
+which is exactly what the dev repo is.
 
-### Project sync state + manual sync (run from any roe project)
-`roe status` is the read-only counterpart to `git status` for the sync itself: it fetches
-and reports whether the project needs a push (`roe push`), a pull (`roe pull`), conflict
-resolution (diverged — `git pull --rebase`), a commit, a `roe upgrade` (seed drift), a
-`roe update` (toolkit behind), or is "all caught up". `roe pull`/`roe push` are the manual
-in/out halves (optional — the plugin does this daily); `roe upgrade` refreshes an existing
-project's seed files to the current toolkit, preserving the pinned model and never
-overwriting user content.
+**Public manifest** (everything else is dev-only): `LICENSE`, `README.md`, `PLAN.md`,
+`bin/`, `scripts/` (except `publish.sh`), `templates/`, `plugins/session-sync.js`, and
+`docs/{machine-setup,daily-workflow,scripts-reference}.md`.
 
-### Sync scope (`roe track`)
-Because the idle `wip:` snapshot commits everything git would add, what a project syncs is
-decided by `.gitignore`. `roe track` surfaces that decision and edits only the
-`remote_opencode_sync`-managed block: keep a file syncing (default — everything not
-ignored), stop it (`--ignore`, appending the pattern and `git rm --cached` when tracked),
-or let it back in (`--unignore`, removing the pattern and re-adding). Works from any
-subdirectory via the `project_root` walk-up; paths that escape the project root are
-refused. The interactive TUI (`scripts/track_tui.py`) is python3 stdlib `curses` only.
-
-### Session-history backups (`roe history`)
-opencode's conversations live in one local database (`~/.local/share/opencode/opencode.db`),
-not in the projects — so deleting that directory wipes the machine's chat history. `roe
-history backup` exports this project's sessions (read-only db) into a rolling compressed
-archive `opencode-history/<host>.jsonl.gz` inside the repo, which the normal sync carries to
-every machine; `roe history list|show` renders any machine's archived sessions. Recovery is
-reading/replaying the archive (opencode has no merge-a-db-back-in API). `/handoff` runs the
-backup; `/sync` warns when this machine's archive is missing or older than 7 days.
-
-### New/unseen machine
-- **Stage 1 (once per machine):** `docs/machine-setup.md` or the lazy
-  `roe setup` (`scripts/setup-machine.sh`) — install tools, `gh auth`, SSH key, install
-  the sync plugin globally, and link the `roe` command.
-- **Stage 2 (once per project):** `gh repo clone <name>` → `cd <name>` → install deps
-  (never synced; each machine installs its own) → `opencode`. Everything from here is
-  automatic.
-
-### Daily
-Start: `cd <project> && opencode`. Orient, work, close the laptop. State is pushed
-continuously by the rules (Layer 1) and the idle hook (Layer 2). Switch machines and
-repeat — `/resume`/`/handoff` are never required.
-
-## Edge cases & the only manual moments
-- **One-time machine setup** — inherently manual (auth, SSH keys).
-- **Merge conflicts** — `git pull --rebase` can fail; the plugin logs it and you resolve
-  once. Avoided by the "one machine actively works at a time" rule.
-- **Work outside opencode** (raw terminal/editor edits) — no session events fire, so sync
-  happens at the next session start/end instead of in real time. Still safe.
-- **Concurrent machines** — supported by git, but conflicts are likely; not recommended.
-
-## Security
-
-- Private GitHub repos; never commit secrets. Env files are gitignored;
-  `.env.example` is committed for reference.
-- The plugin only ever runs `git`/filesystem commands — no network except git fetch/push.
-
-## Advanced option (documented, deferred)
-
-**opencode server mode** — run opencode server on the powerful desktop and drive the same
-live session from the light laptop via web/IDE. No sync needed for that session at all.
-Not primary here since you typically run one machine at a time; details in
-`docs/daily-workflow.md`.
-
-## Roadmap / status
-
-- [x] PLAN, templates, plugin, scripts, docs written
-- [x] `git init` + first commit of this toolkit repo
-- [x] Create the GitHub repo for the toolkit and push
-- [x] Adopt-existing mode + update.sh (v1.1.0) implemented and dry-run tested
-- [x] Released v1.0.0 / v1.1.0 / v1.2.0 / v1.3.0 / v1.3.1 / v1.4.0 (adopt-existing, update.sh, uninstall.sh, plugin project-gating, per-session debounce, `roe` command) with installer SHA pins
-- [x] Released v1.5.0 (per-project model pinning: `--model` / `$MODEL_PIN` / global config default, `roe model`, adopt respect-existing; docs audit + README rebrand)
-- [x] Released v1.5.1 (fix seeded `prompt`→`template` schema break; migrate the adopted project; migration note in docs)
-- [x] Released v1.5.2 (resumable `new`/`adopt`; `roe desync`/`roe resync`; `roe projects`/`roe clone`; plugin silent in non-toolkit projects)
-- [x] Released v1.5.3 (fix `model_set` injection comma vs trailing `//` comments, caught by the rebuilt 28-check model regression)
-- [x] Vendored the verification harnesses into `tests/` + added the takeover guide (`docs/agent-handoff.md`) and standing session instructions (`AGENTS.md`; the never-leave-anything-stale mandate)
-- [x] Released v1.5.4 (vendored test harnesses + takeover guide + `AGENTS.md` standing instructions; adopt hardening — dirty-tree warning, origin-repoint notice, branch-vs-remote-default hint, `--follow-tags`; always-release cadence rule — features suite 61 → 71 checks, all green)
-- [x] Released v1.5.5 (the toolkit repo self-hosts its own workflow: `.opencode/toolkit` marker, `opencode.jsonc`, `CONTINUE.md`, `session-logs/`, `.gitignore`, `## 1. Session start` rules header — clone anywhere → `roe setup` → `opencode` = full handoff; `tests/features.sh` §I guards the self-host markers — features suite 71 → 75 checks, all green)
-- [x] Released v1.5.6 (`roe version` reports installed + latest release via git tags — pure bash/awk, offline-graceful, sandbox-tested against a fake origin; features suite 75 → 79 checks, all green)
-- [x] Released v1.5.7 (`roe status`/`roe pull`/`roe push`/`roe upgrade` — the sync-state advisory + manual in/out halves + non-destructive project seed refresh; shared project-seed detection helpers in `lib.sh`; features suite 79 → 115 checks, all green)
-- [x] Released v1.5.8 (`roe track` — see and change what a project syncs: tracked/untracked/ignored via the roe-owned `.gitignore` block, `--list`/`--ignore`/`--unignore` flags + a curses TUI (`scripts/track_tui.py`, python3 standard library only), `project_root` walk-up in `lib.sh`, escape guard; features suite 115 → 145 checks (§L), all green)
-- [x] Released v1.5.9 (`roe history` — per-(project × machine) session-history backups: read-only export of opencode's db into `opencode-history/<host>.jsonl.gz` inside the repo (`scripts/history.py`, python3 standard library only) + `backup`/`list`/`show` bash front-end, `OPENCODE_DB` override, `project_root` walk-up; `/handoff` backs up and `/sync` warns when the archive is missing/stale; because archives are full transcripts, this public repo gitignores `opencode-history/` and `backup` prints a "will NOT sync" note when ignored — M9 test; features suite 145 → 176 checks (§M), all green)
-- [x] Released v1.5.10 (fix `roe projects` — `gh repo list` takes the owner positionally, not `--owner`; failed scans now surface the real `gh:` error and only suggest `roe setup` when auth is actually down; the `gh` shim mirrors real flag parsing so the class can't regress; features suite 176 → 177 checks (§F), all green)
-- [x] Released v1.6.0 (`roe projects` shows local presence + sync state — `LOCAL` column (`here`/`./dir`/`-` + `clean`/`dirty N`/`ahead N`/`behind N`/`diverged`/`desynced`), scan root = `--dir`/cwd/project's parent, local-only section, per-copy `git fetch` by default (`--no-fetch`), temp-TSV (no bash-3.2 assoc arrays); features suite 177 → 186 checks (§F F3), all green)
-- [ ] Run `roe setup` (scripts/setup-machine.sh) on each machine
-- [ ] `roe new` a real project and verify cross-machine resume
+**Dev-only**: `AGENTS.md`, `CONTINUE.md`, `session-logs/`, `opencode-history/`, `tests/`,
+`docs/agent-handoff.md`, `.opencode/`, `opencode.jsonc`, the root `.gitignore`,

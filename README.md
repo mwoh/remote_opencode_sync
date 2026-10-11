@@ -100,59 +100,6 @@ Everything after the command is passed through unchanged (`roe adopt ./x --resol
 commands exit with `2`. Restart your shell (or `source ~/.bashrc`) if `roe` isn't found
 yet — setup adds `~/.local/bin` to `PATH` if it was missing.
 
-## Layout
-
-```
-PLAN.md                     the plan / architecture
-AGENTS.md                   standing session instructions (keep-everything-in-sync mandate)
-CONTINUE.md                 this repo's running handoff / cross-device memory
-LICENSE                     MIT
-opencode.jsonc              self-host config: pinned model + /resume, /handoff, /sync
-session-logs/               this repo's running session log
-opencode-history/           per-machine archived conversation history (synced with the project)
-.gitignore                  self-host ignore rules (deps, builds, secrets)
-.opencode/toolkit           self-host marker — this repo is itself a toolkit project
-templates/                  per-project files created/used by new-project.sh
-  AGENTS.md.tpl             base prompt / workflow rules (Layer 1)
-  CONTINUE.md.tpl           handoff log with LAST SESSION block
-  opencode.jsonc.tpl        project config: /resume, /handoff, /sync + pinned model
-  .gitignore.tpl            deps, builds, secrets excluded
-  .env.example.tpl          secrets reference (real .env is gitignored)
-  workflow-rules.md.tpl     rules-only block appended to an existing AGENTS.md on adopt
-  .gitignore.append.tpl     ignore patterns appended to an existing .gitignore on adopt
-plugins/
-  session-sync.js           global zero-touch sync plugin (Layer 2)
-bin/
-  roe                       'roe' command front-end (symlinked into ~/.local/bin)
-scripts/
-  bootstrap.sh              one-liner install/update entry point
-  update.sh                 update an already-installed toolkit
-  new-project.sh            create or adopt a project (see below; resumable)
-  projects.sh               list your synced projects / clone one onto this machine
-  status.sh                 `roe status` — is this a valid project; what does it need?
-  pull.sh                   `roe pull` — fetch + clean rebase (plugin's ritual, manual)
-  push.sh                   `roe push` — push committed state (prevents non-fast-forward)
-  upgrade.sh                `roe upgrade` — non-destructive refresh of a project's seed
-  track.sh                  `roe track` — see/change what a project syncs (list, ignore, unignore, TUI)
-  track_tui.py              curses TUI for `roe track` (python3 standard library only)
-  history.sh                `roe history` — backup/list/show this machine's session history for a project
-  history.py                read-only opencode-db exporter behind `roe history` (python3 stdlib only)
-  desync.sh                 stop one working copy from syncing (local only)
-  resync.sh                 undo a desync
-  setup-machine.sh          lazy one-time machine setup
-  uninstall.sh              remove what setup created (see below)
-  lib.sh                    shared helpers (placeholder relink, package install/remove, manifest, project seed detection, project_root walk-up)
-docs/
-  machine-setup.md          new-machine checklist (the first step)
-  daily-workflow.md         everyday playbook + advanced options
-  scripts-reference.md      every script, its options, and how roe wires through
-  agent-handoff.md          takeover guide: current state, tests, release process
-tests/
-  features.sh               186-check sandbox e2e (fake gh) — run before any release
-  model-features.sh         28-check model-helper regression
-  plugin-test.mjs           15-check session-sync plugin harness
-  shims/gh                  fake `gh` backing the sandbox
-```
 
 ### What each piece does
 
@@ -261,21 +208,17 @@ gh repo clone @@GITHUB_USER@@/remote_opencode_sync
 
 ## Developing the toolkit itself (dogfooding)
 
-This repo is a toolkit project too: it carries the `.opencode/toolkit` marker, a pinned
-`opencode.jsonc`, its own `CONTINUE.md` and `session-logs/`, and the `## 1. Session start`
-rules in `AGENTS.md`. So on a fresh machine the whole loop works for the toolkit itself:
+This public repo is the **distribution**: it ships the runtime (`bin/`, `scripts/`,
+`templates/`, `plugins/`) and the user docs, and nothing else. Its own development —
+the architecture plan, the standing session rules, the handoff/session logs, the
+test suites, and the per-machine conversation-history archives — lives in a **private
+companion repo** (`remote_opencode_sync-dev`), which is the source of truth and where
+`roe`'s changes are made and released; the runtime subset is exported from there into this
+one at release time.
 
-```
-git clone git@github.com:mwoh/remote_opencode_sync.git
-cd remote_opencode_sync
-roe setup              # installs the global plugin + git identity (once per machine)
-opencode               # AGENTS.md -> docs/agent-handoff.md -> CONTINUE.md = full handoff
-```
+So for day-to-day use, this repo is all you need. If you want to work on `roe` itself,
+you'll need access to the private repo.
 
-Here, the session-sync plugin pulls/rebase at session start, `wip:`-backs up uncommitted work
-on idle, and injects `CONTINUE.md` into context compaction — in this repo as in any project.
-`tests/features.sh` §I keeps the self-host honest (the 186-check count includes it):
-if the marker, config commands, `CONTINUE.md`, or rules header are removed, the suite fails.
 
 ## Creating a new project
 
@@ -515,9 +458,9 @@ roe history show <session-id> [<dir>]   # render one as a markdown transcript
   archive is missing or older than 7 days, so a machine that never archived gets noticed
   before disaster rather than after.
 - **Privacy:** an archive is the **full raw transcript** (your prompts and tool output
-  included), so keep a project's repo **private**. This toolkit's own repo is public, so it
-  gitignores `opencode-history/` — `backup` prints a note when the archive is ignored, so
-  it never silently fails to sync.
+  included), so keep a project's repo **private**. If you ever must use a public repo,
+  gitignore `opencode-history/` there — `backup` prints a note when the archive is ignored,
+  so it never silently fails to sync.
 - Env: `OPENCODE_DB` overrides the db path (for a relocated opencode data dir).
 
 ## Pinned model
