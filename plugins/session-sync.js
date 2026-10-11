@@ -22,6 +22,8 @@
 // rewrites or conflicts with them.
 
 import { hostname } from "node:os"
+import { existsSync } from "node:fs"
+import path from "node:path"
 
 const HOST = hostname().split(".")[0]
 const IDLE_DEBOUNCE_MS = 120_000
@@ -46,16 +48,34 @@ export const SessionSync = async (ctx) => {
     }
   }
 
-  // Run a command string in the project worktree. Returns { ok, text }.
+  // Run a command string in the project worktree. Returns { ok, text, err }.
+  //
+  // IMPORTANT: `ctx.$` is Bun's `$` shell, and it does NOT shell-parse an
+  // interpolated value — an interpolation is passed as a SINGLE literal argument.
+  // So `ctx.$`${cmd}`` would try to execute the whole command string as one command
+  // NAME and fail with `bun: command not found: ...`. Passing it through `sh -c`
+  // gives `sh` the string as one argument (exactly what -c wants), which then
+  // parses it normally.
+  //
+  // `.quiet()` stops command output being echoed into the user's session;
+  // `.nothrow()` keeps a non-zero exit from throwing (a thrown error under .quiet()
+  // loses stderr, which is what the failure warnings below report).
   const sh = async (cmd) => {
     try {
-      const r = await ctx.$`${cmd}`.cwd(worktree)
-      return { ok: true, text: r.text ? r.text() : "" }
+      const r = await ctx.$`sh -c ${cmd}`.cwd(worktree).quiet().nothrow()
+      return {
+        ok: r.exitCode === 0,
+        text: r.stdout.toString(),
+        err: r.stderr.toString(),
+      }
     } catch (err) {
       const msg = err?.stderr?.text ? err.stderr.text() : err?.message ?? String(err)
-      return { ok: false, text: String(msg) }
+      return { ok: false, text: "", err: String(msg) }
     }
   }
+  // Best available diagnostic for a failed command: real stderr, else whatever
+  // landed on stdout, else a generic exit-code note.
+  const diag = (r) => (r.err || r.text || "").trim() || `exit code ${r.code ?? "?"}`
   const git = (cmd) => sh(`git ${cmd}`)
 
   const isRepo = async () => (await git("rev-parse --is-inside-work-tree")).ok
@@ -67,11 +87,14 @@ export const SessionSync = async (ctx) => {
   // A local (gitignored) .opencode/state/no-session-sync file opts a single
   // working copy out on this machine.
   const isToolkitProject = async () => {
-    // Re-checked on every call (cheap: two stat calls) so `roe desync` / `roe resync`
-    // run MID-SESSION take effect immediately instead of after an opencode restart.
-    const mk = await sh("[ -f .opencode/toolkit ] && echo yes || echo no")
-    const opt = await sh("[ -f .opencode/state/no-session-sync ] && echo yes || echo no")
-    return mk.ok && mk.text.trim() === "yes" && !(opt.ok && opt.text.trim() === "yes")
+    // Checked with fs (not the shell) because this runs in EVERY opencode session
+    // everywhere: two stat calls cost nothing, whereas spawning shells just to test
+    // for a file would be visible noise in projects that don't use the toolkit.
+    // Re-checked on every call so `roe desync` / `roe resync` run MID-SESSION take
+    // effect immediately instead of after an opencode restart.
+    const marker = existsSync(path.join(worktree, ".opencode/toolkit"))
+    const optout = existsSync(path.join(worktree, ".opencode/state/no-session-sync"))
+    return marker && !optout
   }
 
   // Only one sync may run at a time. syncStart and syncIdle are fired fire-and-forget
@@ -97,8 +120,8 @@ export const SessionSync = async (ctx) => {
   const meta = async () => {
     const date = dateStamp()
     const file = `${date}-${HOST}.md`
-    const exists = await sh(`[ -f "session-logs/${file}" ] && echo yes || echo no`)
-    return { date, file, exists: exists.ok && exists.text.trim() === "yes" }
+    const exists = existsSync(path.join(worktree, "session-logs", file))
+    return { date, file, exists }
   }
 
   const ensureSessionLog = async () => {
@@ -121,6 +144,11 @@ export const SessionSync = async (ctx) => {
   // --- session start: pull / rebase / push plumbing ---
   const syncStartInner = async () => {
     try {
+      // Guard FIRST: a project that isn't a toolkit project must be completely
+      // invisible — no shell, no bookkeeping, and above all no log lines (the
+      // debounce log below would otherwise fire here on repeated events).
+      if (!(await isToolkitProject())) return
+
       const now = Date.now()
       if (now - lastStartSync < START_DEBOUNCE_MS) {
         if (!startWarned) {
@@ -132,7 +160,6 @@ export const SessionSync = async (ctx) => {
       lastStartSync = now
       startWarned = false
 
-      if (!(await isToolkitProject())) return // silent: non-toolkit projects are fully invisible
       if (!(await isRepo())) return
       if (!(await hasRemote())) return // local-only project; nothing to sync
 
@@ -144,7 +171,7 @@ export const SessionSync = async (ctx) => {
       if (!fetched.ok) {
         // Ignoring this made "already synced" be asserted by silence: behind stayed 0
         // because the remote-tracking ref was stale, and nothing was logged.
-        await log("warn", `start fetch failed (${fetched.text.trim()}) — skipping sync`)
+        await log("warn", `start fetch failed (${diag(fetched)}) — skipping sync`)
         return
       }
       const behindR = await git(`rev-list --count HEAD..${remote}`)
@@ -170,7 +197,7 @@ export const SessionSync = async (ctx) => {
         const before = beforeR.ok ? beforeR.text.split("\n").filter(Boolean).length : 0
         const st = await git('stash push -u -m "session-sync: pre-pull"')
         if (!st.ok) {
-          await log("warn", `start stash failed (${st.text.trim()}) — leaving tree alone`)
+          await log("warn", `start stash failed (${diag(st)}) — leaving tree alone`)
           return
         }
         const afterR = await git("stash list")
@@ -187,16 +214,16 @@ export const SessionSync = async (ctx) => {
           if (stashed) {
             const pop = await git("stash pop")
             if (!pop.ok) {
-              await log("warn", `start stash pop after failed pull conflicted: ${pop.text.trim()} — run 'git stash pop' manually`)
+              await log("warn", `start stash pop after failed pull conflicted: ${diag(pop)} — run 'git stash pop' manually`)
             }
           }
-          await log("error", `start pull failed: ${pull.text.trim()}`)
+          await log("error", `start pull failed: ${diag(pull)}`)
           return
         }
         if (stashed) {
           const pop = await git("stash pop")
           if (!pop.ok) {
-            await log("warn", `start stash pop conflicted: ${pop.text.trim()} — run 'git stash pop' manually`)
+            await log("warn", `start stash pop conflicted: ${diag(pop)} — run 'git stash pop' manually`)
           }
         }
         await log("info", "pulled latest changes from remote")
@@ -214,6 +241,9 @@ export const SessionSync = async (ctx) => {
   // --- session idle: snapshot any uncommitted work as a wip commit ---
   const syncIdleInner = async () => {
     try {
+      // Guard FIRST: same contract as syncStart — non-toolkit projects never log.
+      if (!(await isToolkitProject())) return
+
       const now = Date.now()
       if (now - lastIdleSync < IDLE_DEBOUNCE_MS) {
         if (!idleWarned) {
@@ -225,7 +255,6 @@ export const SessionSync = async (ctx) => {
       lastIdleSync = now
       idleWarned = false
 
-      if (!(await isToolkitProject())) return // silent: non-toolkit projects are fully invisible
       if (!(await isRepo())) return
       if (!(await hasRemote())) return
       // Mirrors syncStart's guard: on a detached HEAD or an unborn branch a commit here
@@ -242,11 +271,11 @@ export const SessionSync = async (ctx) => {
 
       const commit = await git(`add -A && git commit -m "wip: ${HOST} ${stamp}"`)
       if (!commit.ok) {
-        await log("warn", `idle snapshot commit failed: ${commit.text.trim()}`)
+        await log("warn", `idle snapshot commit failed: ${diag(commit)}`)
         return
       }
       const push = await git("push")
-      if (!push.ok) await log("warn", `idle snapshot push failed: ${push.text.trim()}`)
+      if (!push.ok) await log("warn", `idle snapshot push failed: ${diag(push)}`)
       await log("info", `auto-saved uncommitted work (wip: ${HOST} ${stamp})`)
     } catch (err) {
       await log("error", `unexpected idle-sync error: ${err?.message ?? String(err)}`)
