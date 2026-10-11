@@ -5,9 +5,11 @@
 #
 # The conversations for this project + machine live in opencode's central db
 # (~/.local/share/opencode/opencode.db). This script NEVER writes that db: it reads
-# it read-only (history.py) and writes a rolling compressed archive at
-# <project>/opencode-history/<host>.jsonl.gz. Restoring = reading the archive
-# (list / show transcripts) — opencode has no merge-a-db-back-in API.
+# it read-only (history.py) and writes a per-session archive tree at
+# <project>/opencode-history/<host>/<session-id>.jsonl.gz (one file per session, so
+# unchanged sessions keep their existing git blobs across backups). Restoring = reading
+# the archive (list / show transcripts) — opencode has no merge-a-db-back-in API.
+# A pre-v1.8.0 rolled-up <host>.jsonl.gz is still read, and migrated away on backup.
 #
 # Modes:
 #   history.sh backup [dir] [--db <path>] [--host <name>]
@@ -91,8 +93,11 @@ if [[ "$SUB" == "backup" ]]; then
   rc=$?
   # Safety: an archive is the FULL raw transcript. If this project ignores it (e.g. a
   # public repo), say so plainly rather than letting the user believe it will sync.
+  # The archive is a per-host DIRECTORY now (one file per session); check both that and
+  # the legacy rolled-up file so the note fires for either ignore rule.
   if [[ $rc -eq 0 ]] && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    if git -C "$ROOT" check-ignore -q -- "opencode-history/$HOST.jsonl.gz" 2>/dev/null; then
+    if git -C "$ROOT" check-ignore -q -- "opencode-history/$HOST" 2>/dev/null \
+       || git -C "$ROOT" check-ignore -q -- "opencode-history/$HOST.jsonl.gz" 2>/dev/null; then
       echo "note: opencode-history/ is gitignored in this repo — this archive stays local and will NOT sync."
       echo "      (archives are full transcripts; keep a project private to sync them)"
     fi

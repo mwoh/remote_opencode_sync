@@ -151,9 +151,10 @@ yet — setup adds `~/.local/bin` to `PATH` if it was missing.
   remote_opencode_sync-managed `.gitignore` block; `roe update` (toolkit itself) and
   `roe upgrade` (a project) are different actions.
 - **`history.sh` / `history.py`** — `roe history` archives this machine's opencode
-  conversation history for a project into `opencode-history/<host>.jsonl.gz` (read-only db
-  export; the archive syncs with the repo so any machine can recover it), and renders it
-  back with `list`/`show`. The `sync`/`handoff` commands remind you when it is missing.
+  conversation history for a project into `opencode-history/<host>/<session-id>.jsonl.gz`
+  — one file per session (read-only db export; the archive syncs with the repo so any
+  machine can recover it), and renders it back with `list`/`show`. The `sync`/`handoff`
+  commands remind you when it is missing.
 - **`lib.sh`** — internal helpers (placeholder relink, package install/remove, uninstall
   manifest, model pin, project seed detection); you never call it directly.
 
@@ -443,9 +444,12 @@ roe history list   [<dir>]        # list the archived sessions (machine + projec
 roe history show <session-id> [<dir>]   # render one as a markdown transcript
 ```
 
-- The archive is `opencode-history/<host>.jsonl.gz` — one rolling file per machine, keyed
-  by short hostname. It is read from the db **read-only** (nothing in opencode is ever
-  modified) and stays small because gzip + one-file-per-host.
+- The archive is `opencode-history/<host>/<session-id>.jsonl.gz` — **one file per session**,
+  keyed by short hostname. It is read from the db **read-only** (nothing in opencode is ever
+  modified). Because unchanged sessions are never rewritten, backing up repeatedly costs
+  **zero** extra git history — only genuinely updated sessions add a blob. (Before v1.8.0
+  this was a single rolling `<host>.jsonl.gz`; `list`/`show` still read that old layout and
+  the next `backup` migrates it to per-session files automatically.)
 - Because it lives in the project, `git push`/`pull` (or the plugin's `wip:` snapshot)
   copies it between machines. Any machine can then browse *another* machine's history for
   the project with `roe history list` / `show` (fast-forward the archive's hostname with

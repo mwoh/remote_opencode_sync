@@ -6,10 +6,19 @@
 # Where the history lives: opencode keeps every project's conversations in one
 # central SQLite db (~/.local/share/opencode/opencode.db by default; override with
 # OPENCODE_DB or --db). THIS TOOL NEVER WRITES THERE: it opens the db read-only and
-# exports only the sessions belonging to the resolved project, as a rolling
-# compressed JSONL archive at <project>/opencode-history/<host>.jsonl.gz. Because the
-# archive is written inside the synced project, the normal git sync propagates every
-# machine's history to every machine.
+# exports only the sessions belonging to the resolved project into the project's own
+# archive tree at <project>/opencode-history/<host>/<session-id>.jsonl.gz — ONE FILE PER
+# SESSION. Because the archive is written inside the synced project, the normal git sync
+# propagates every machine's history to every machine.
+#
+# Why one file per session: each backup only rewrites the sessions that actually changed
+# (a content hash decides), so an unchanged session keeps its existing git blob forever
+# instead of a fresh full-size blob landing in history on every single backup.
+#
+# Legacy layout (< v1.8.0): a single rolling <project>/opencode-history/<host>.jsonl.gz
+# holding every session. `list`/`show` still read it; a successful backup migrates it to
+# the per-session layout and removes the rolled-up file (only when every legacy session is
+# represented in the new layout, so nothing is ever lost).
 #
 # opencode has no "merge this db back in" API, so recovery is reading the archive
 # (list / show render readable transcripts; the raw JSONL keeps full fidelity).
@@ -24,6 +33,7 @@
 import argparse
 import datetime as _dt
 import gzip
+import hashlib
 import json
 import os
 import sqlite3
@@ -155,25 +165,158 @@ def collect(con, root, host):
     return sessions
 
 
-# --- archive IO --------------------------------------------------------------
-def archive_path(root, host):
-    return os.path.join(norm(root), "opencode-history", f"{host}.jsonl.gz")
+# --- archive IO (per-session files; legacy rolled-up file still readable) --------
+ARCHIVE_DIRNAME = "opencode-history"
 
 
-def write_archive(path, records):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with gzip.open(path, "wt", encoding="utf-8") as gz:
-        for rec in records:
-            rec = dict(rec)
-            rec["backed_up_at"] = _iso(dt_now())
-            gz.write(json.dumps(rec, ensure_ascii=False) + "\n")
+def archive_dir(root, host):
+    return os.path.join(norm(root), ARCHIVE_DIRNAME, host)
 
 
-def read_archive(path):
-    if not os.path.isfile(path):
+def legacy_archive_path(root, host):
+    """The pre-v1.8.0 rolled-up single file (read-only compatibility + migration)."""
+    return os.path.join(norm(root), ARCHIVE_DIRNAME, f"{host}.jsonl.gz")
+
+
+def session_file(root, host, session_id):
+    return os.path.join(archive_dir(root, host), f"{session_id}.jsonl.gz")
+
+
+def session_ids_present(root, host):
+    """session ids that already have a per-session archive file (no db read needed)."""
+    d = archive_dir(root, host)
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return set()
+    out = set()
+    for n in names:
+        if n.endswith(".jsonl.gz") and not n.startswith("."):
+            out.add(n[: -len(".jsonl.gz")])
+    return out
+
+
+def _existing_hash(root, host, session_id):
+    """content hash already on disk for a session, or None if absent/unreadable."""
+    p = session_file(root, host, session_id)
+    try:
+        with open(p, "rb") as fh:
+            blob = fh.read()
+        rec = json.loads(gzip.decompress(blob).decode("utf-8").split("\n", 1)[0])
+        return rec.get("content_hash")
+    except (OSError, ValueError, EOFError, gzip.BadGzipFile):
         return None
+
+
+def _write_one(path, record):
+    """Write one session record atomically (temp file + replace) so a crash never
+    leaves a half-written archive behind."""
+    tmp = path + ".tmp"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(tmp, "wb") as fh:
+        fh.write(gzip.compress((json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")))
+    os.replace(tmp, path)
+
+
+def write_archive(root, host, records):
+    """One file per session. Unchanged sessions (same content hash) are NOT rewritten,
+    so their existing git blobs survive — this is the whole point of the per-session
+    layout. Returns (written, unchanged, bytes_written)."""
+    kept, written, wrote_bytes = set(), 0, 0
+    for rec in records:
+        sid = rec.get("session", {}).get("id")
+        if not sid:
+            continue
+        content = dict(rec)
+        content.pop("backed_up_at", None)
+        digest = hashlib.sha256(
+            json.dumps(content, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        content["content_hash"] = digest
+        content["backed_up_at"] = _iso(dt_now())
+        kept.add(sid)
+        if _existing_hash(root, host, sid) == digest:
+            continue  # unchanged: leave the existing file (and git blob) alone
+        p = session_file(root, host, sid)
+        _write_one(p, content)
+        written += 1
+        try:
+            wrote_bytes += os.path.getsize(p)
+        except OSError:
+            pass
+    return written, len(kept) - written, wrote_bytes
+
+
+def prune_gone(root, host, records):
+    """Remove per-session files for sessions no longer in the db (the rolled-up layout
+    dropped them implicitly; keep that behavior so the archive can't grow forever)."""
+    live = {r.get("session", {}).get("id") for r in records}
+    live.discard(None)
+    removed = 0
+    for sid in session_ids_present(root, host) - live:
+        try:
+            os.remove(session_file(root, host, sid))
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+def migrate_legacy(root, host):
+    """If a pre-v1.8.0 rolled-up file exists AND every session in it also has a
+    per-session file, delete the rolled-up file (its content is now fully represented).
+    Never deletes when the new layout is missing anything, so nothing can be lost."""
+    legacy = legacy_archive_path(root, host)
+    if not os.path.isfile(legacy):
+        return False
+    try:
+        with gzip.open(legacy, "rt", encoding="utf-8") as gz:
+            legacy_ids = {json.loads(line)["session"]["id"] for line in gz if line.strip()}
+    except (OSError, ValueError, KeyError, EOFError, gzip.BadGzipFile):
+        return False
+    if not legacy_ids.issubset(session_ids_present(root, host)):
+        return False  # not fully migrated — keep the legacy file as a safety net
+    try:
+        os.remove(legacy)
+        return True
+    except OSError:
+        return False
+
+
+def _read_file(path):
     with gzip.open(path, "rt", encoding="utf-8") as gz:
         return [json.loads(line) for line in gz if line.strip()]
+
+
+def read_archive(root, host):
+    """All archived session records for a host: the per-session layout, plus any
+    legacy rolled-up file whose sessions aren't already present. Returns None when the
+    host has no archive at all."""
+    have_any = False
+    records = []
+    d = archive_dir(root, host)
+    for sid in sorted(session_ids_present(root, host)):
+        try:
+            records.extend(_read_file(session_file(root, host, sid)))
+        except (OSError, ValueError, EOFError, gzip.BadGzipFile):
+            pass
+        have_any = True
+    legacy = legacy_archive_path(root, host)
+    if os.path.isfile(legacy):
+        have_any = True
+        seen = {r.get("session", {}).get("id") for r in records}
+        try:
+            for rec in _read_file(legacy):
+                if rec.get("session", {}).get("id") not in seen:
+                    records.append(rec)
+        except (OSError, ValueError, EOFError, gzip.BadGzipFile):
+            pass
+    if not have_any:
+        return None
+    records.sort(
+        key=lambda rec: rec.get("session", {}).get("time_created") or 0, reverse=True
+    )
+    return records
 
 
 # --- formatting --------------------------------------------------------------
@@ -274,27 +417,36 @@ def main(argv):
                 f"right database? (set OPENCODE_DB to point at the real one)"
             )
         records = collect(con, norm(args.root), args.host)
-        path = archive_path(args.root, args.host)
-        write_archive(path, records)
+        written, unchanged, _bytes = write_archive(args.root, args.host, records)
+        pruned = prune_gone(args.root, args.host, records)
+        migrated = migrate_legacy(args.root, args.host)
         n = len(records)
         total = sum(len(r["session"].get("messages") or []) for r in records)
         note = "" if n else " (no sessions recorded for this project yet — archive created)"
         print(
             f"archived {n} session(s) / {total} message(s) for {args.host}"
-            f" -> {path}{note}"
+            f" -> {archive_dir(args.root, args.host)}/{note}"
         )
+        print(
+            f"  {written} written, {unchanged} unchanged (untouched to keep git history "
+            f"small)" + (f", {pruned} pruned" if pruned else "")
+        )
+        if migrated:
+            print(
+                "  migrated the pre-v1.8.0 rolled-up archive to per-session files "
+                "(removed the old single file)"
+            )
         return 0
 
     # list / show read the archive, not the db
-    path = archive_path(args.root, args.host)
-    records = read_archive(path)
+    records = read_archive(args.root, args.host)
     if records is None:
         raise SystemExit(
             f"history.py: no archive for {args.host} in {norm(args.root)} — "
             f"run 'roe history backup' on that machine first."
         )
     if args.sub == "list":
-        print_list(records, args.root, args.host, path)
+        print_list(records, args.root, args.host, archive_dir(args.root, args.host))
         return 0
 
     want = args.session
@@ -305,8 +457,8 @@ def main(argv):
         match = [r for r in records if r["session"]["id"].startswith(want)]
     if len(match) == 0:
         raise SystemExit(
-            f"history.py: no session matching '{want}' in {path} (" 
-            f"run 'roe history list' to see archived sessions)"
+            f"history.py: no session matching '{want}' in the {args.host} archive "
+            f"(run 'roe history list' to see archived sessions)"
         )
     if len(match) > 1:
         raise SystemExit(

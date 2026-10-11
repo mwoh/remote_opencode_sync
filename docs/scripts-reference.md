@@ -442,8 +442,8 @@ machine into a compressed archive **inside the repo**, which the normal sync (or
 
 | Piece | What it does |
 |-------|--------------|
-| archive path | `<project>/opencode-history/<host>.jsonl.gz` — one **rolling** file per machine, keyed by short hostname (`--host` overrides) |
-| `backup` | reads the db **read-only** (`mode=ro`), matches sessions to the project (by `project.worktree`, `project_directory.directory`, or `session.directory`), writes one JSONL record per session with every message and part's raw JSON |
+| archive path | `<project>/opencode-history/<host>/<session-id>.jsonl.gz` — **one file per session**, keyed by short hostname (`--host` overrides). Pre-v1.8.0 archives were a single rolling `<host>.jsonl.gz`; still read, and auto-migrated on the next `backup` |
+| `backup` | reads the db **read-only** (`mode=ro`), matches sessions to the project (by `project.worktree`, `project_directory.directory`, or `session.directory`), writes one JSONL record per session with every message and part's raw JSON. Unchanged sessions are **not rewritten** (a content hash decides), so repeated backups cost no git history |
 | `list` | prints the archive's sessions (time · title · id · agent · message count) — no db touched |
 | `show <id>` | renders one session as a markdown transcript (text/reasoning, `[tool: …]` markers); accepts an exact id or a **unique prefix** |
 
@@ -456,6 +456,10 @@ Key behaviours:
   db, so one machine's history for a *different* project is never included.
 - **It works from any subdirectory** (`project_root` walk-up, like `roe track`) and refuses
   a directory without the `.opencode/toolkit` marker (exit 1).
+- **Backing up is cheap (git-friendly).** Each session's record carries a `content_hash`;
+  a backup only rewrites a session whose hash changed (atomically, via temp file +
+  rename), leaving every unchanged session's existing blob — and therefore the repo's
+  history — untouched. Sessions that vanished from the db are pruned.
 - **Cross-machine recovery:** because the archive is committed in the project, any machine
   sees every machine's archive. `roe history list --host <other>` and
   `roe history show <id> --host <other>` read another machine's history. opencode has no
@@ -469,13 +473,16 @@ Key behaviours:
   there (via `roe track --ignore opencode-history`): `backup` still writes the archive
   locally but prints a `will NOT sync` note — so an ignored archive is never mistaken for a
   syncing one.
-- Re-running `backup` is idempotent (overwrites the host's single archive).
+- **Legacy rolled-up archives** (`<host>.jsonl.gz`, pre-v1.8.0) are still read by
+  `list`/`show`. A `backup` migrates them to the per-session layout and removes the old
+  single file — but only once every legacy session is present in the new layout, so nothing
+  can be lost.
 
 | Option | Meaning |
 |--------|---------|
 | `<dir>` | project (default: cwd; walked up to the `.opencode/toolkit` marker) |
 | `--db <path>` | opencode db to read (**backup only**; default `$OPENCODE_DB` or `~/.local/share/opencode/opencode.db`) |
-| `--host <name>` | machine key for the archive filename (default: `hostname -s`) |
+| `--host <name>` | machine key for the archive directory (default: `hostname -s`) |
 | `-h`, `--help` | usage |
 
 Exit codes: `0` success; `1` not a roe project, db not found/unusable, no archive for the

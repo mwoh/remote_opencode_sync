@@ -83,8 +83,8 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `scripts/upgrade.sh` | `roe upgrade` — non-destructive refresh of a project's seed files to the current toolkit (marker, fallback commands preserving the pinned model, missing rules/ignore blocks, `session-logs/`); pulls first, commits + pushes the refresh, or "nothing to update" |
 | `scripts/track.sh` | `roe track` — see/change what a project syncs. Because the plugin's wip snapshot does `git add -A`, `.gitignore` is the true sync boundary; this edits only the `# --- added by remote_opencode_sync ---` block. `--list` (tracked / untracked-but-synced / ignored), `--ignore` (append pattern, + `git rm --cached` if tracked), `--unignore` (remove pattern, + `git add`); project resolved by `project_root` walk-up; escaping paths refused |
 | `scripts/track_tui.py` | curses TUI for `roe track` — python3 **standard-library only** (`curses`), a thin presentation layer that shells back to `track.sh` flags (the single source of truth); falls back to the text report when python3/`curses` is unavailable or not a terminal |
-| `scripts/history.sh` | `roe history` — `backup`/`list`/`show` this machine's opencode session history for a project. `backup` exports the project's sessions from opencode's central db (read-only) to `opencode-history/<host>.jsonl.gz` inside the repo, so the archive syncs to every machine; `list`/`show` render an archived machine's sessions/transcripts. Project resolved by `project_root` walk-up; non-roe dirs refused |
-| `scripts/history.py` | read-only opencode-db exporter/reader behind `roe history` — python3 **standard-library only** (`sqlite3`/`json`/`gzip`), opens the db `mode=ro`, matches sessions to the project (worktree/directory), writes the rolling gzip JSONL archive; `show` renders markdown transcripts. All state mutation stays in bash |
+| `scripts/history.sh` | `roe history` — `backup`/`list`/`show` this machine's opencode session history for a project. `backup` exports the project's sessions from opencode's central db (read-only) to `opencode-history/<host>/<session-id>.jsonl.gz` (one file per session) inside the repo, so the archive syncs to every machine; `list`/`show` render an archived machine's sessions/transcripts. Project resolved by `project_root` walk-up; non-roe dirs refused |
+| `scripts/history.py` | read-only opencode-db exporter/reader behind `roe history` — python3 **standard-library only** (`sqlite3`/`json`/`gzip`), opens the db `mode=ro`, matches sessions to the project (worktree/directory), writes one gzip JSONL file per session and skips unchanged sessions (content hash), prunes deleted ones, and migrates any pre-v1.8.0 rolled-up archive; `show` renders markdown transcripts. All state mutation stays in bash |
 | `scripts/setup-machine.sh` | Lazy one-time machine setup (incl. git identity + SSH key); links `roe` into `~/.local/bin` + PATH; writes the uninstall manifest used by `scripts/uninstall.sh` |
 | `scripts/uninstall.sh` | Reverse of setup: removes only what the install created (per the manifest), per-tool/auth/ssh questionnaire, `--dry-run`/`--yes` |
 | `scripts/lib.sh` | Shared helpers (placeholder relink, package install/remove, uninstall manifest, model pin: `model_resolve`/`model_set`/`model_get`, project seed detection: `project_has_marker`/`project_desynced`/`project_commands_current`/`project_rules_current`/`project_gitignore_current`/`project_seed_stale`/`project_root`, comment-aware JSONC block injector: `jsonc_inject_block`) |
@@ -92,7 +92,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
 | `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (186 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+| `tests/` | Vendored verification harnesses: `features.sh` (205 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
 
 ## Distribution — two repos (since v1.7.0)
 
@@ -103,8 +103,8 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `mwoh/remote_opencode_sync` | public | The distribution. Installed by `bootstrap.sh` (same URL, tags, and pins as always). Contains only what makes `roe` *run*. |
 | `mwoh/remote_opencode_sync-dev` | private | The source of truth. Full history, all development, all tests, plus this project's own `CONTINUE.md`, `session-logs/`, and committed `opencode-history/` archives. Changes are made and released here. |
 
-This split exists because the archive `roe history` writes (`opencode-history/<host>.jsonl.gz`)
-is the **full raw transcript** — it must never land in a public repo, but it *should* travel
+This split exists because the archives `roe history` writes (`opencode-history/<host>/…`) are
+the **full raw transcript** — they must never land in a public repo, but they *should* travel
 between a private project's machines. Before v1.7.0 this repo was public and therefore had to
 gitignore its own archive; the private dev repo removes that exception. Because `history.py`
 matches sessions by project worktree, the private side must be a full clone of the project —
