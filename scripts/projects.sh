@@ -296,14 +296,21 @@ list_cmd() {
     echo "remote_opencode_sync projects for $own: $synced_n synced of $total"
     echo
     printf '%-38s  %-34s  %-8s  %s\n' "NAME" "LOCAL" "PRIVATE" "DESCRIPTION"
-    for row in "${rows[@]}"; do
-      IFS=$'\t' read -r n p a s d <<< "$row"
-      local note="" local_col="-" li=""
-      [[ "$a" == "true" ]] && note=" [archived]"
-      li="$(local_of "$n")"
-      if [[ -n "$li" ]]; then local_col="${li%%$'\t'*} (${li#*$'\t'})"; fi
-      printf '%-38s  %-34s  %-8s  %s%s\n' "$n" "$local_col" "$p" "$d" "$note"
-    done
+    # Guarded by a count check rather than expanding the array bare: expanding an
+    # EMPTY array under `set -u` is an unbound-variable error on bash < 4.4 (macOS
+    # ships bash 3.2), which killed `roe projects` whenever the list came back empty
+    # — the normal "you have no repos" case. (`${rows[@]:-}` also avoids the crash
+    # but yields one phantom empty row, so the explicit guard is correct here.)
+    if [[ "${#rows[@]}" -gt 0 ]]; then
+      for row in "${rows[@]}"; do
+        IFS=$'\t' read -r n p a s d <<< "$row"
+        local note="" local_col="-" li=""
+        [[ "$a" == "true" ]] && note=" [archived]"
+        li="$(local_of "$n")"
+        if [[ -n "$li" ]]; then local_col="${li%%$'\t'*} (${li#*$'\t'})"; fi
+        printf '%-38s  %-34s  %-8s  %s%s\n' "$n" "$local_col" "$p" "$d" "$note"
+      done
+    fi
     echo
     echo "  clone one:  roe clone <name>"
   fi

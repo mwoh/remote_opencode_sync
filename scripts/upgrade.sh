@@ -135,17 +135,27 @@ fi
 
 # ---- [2] opencode config commands ----
 config=""
+esc=""
 [[ -f "$DIR/opencode.json" ]] && config="$DIR/opencode.json"
 [[ -z "$config" && -f "$DIR/opencode.jsonc" ]] && config="$DIR/opencode.jsonc"
 
 if [[ -z "$config" ]]; then
-  # no config at all → seed a fresh opencode.jsonc (model pinned if resolvable)
+  # no config at all → seed a fresh opencode.jsonc (model pinned if resolvable).
+  # Resolve the model BEFORE copying the template: the template ships a literal
+  # `"model": "@@MODEL@@"`, so reading model_get after the copy would read the
+  # placeholder back and substitute it for itself, leaving @@MODEL@@ in the file.
+  model="$(model_get "$DIR" 2>/dev/null || true)"
+  [[ "$model" == "@@MODEL@@" ]] && model=""
+  [[ -z "$model" ]] && model="$(model_from_global 2>/dev/null || true)"
+  [[ "$model" == "@@MODEL@@" ]] && model=""
   config="$DIR/opencode.jsonc"
   cp "$TEMPLATES_DIR/opencode.jsonc.tpl" "$config"
-  model="$(model_get "$DIR" 2>/dev/null || true)"
-  [[ -z "$model" ]] && model="$(model_from_global 2>/dev/null || true)"
   if [[ -n "$model" ]]; then
-    sed "s|@@MODEL@@|$model|" "$config" > "$config.tmp" && mv "$config.tmp" "$config"
+    # sed_repl_escape: a model id containing the delimiter (|), an ampersand (&) or a
+    # backslash (\) would otherwise make sed abort or corrupt the config — leaving the
+    # literal @@MODEL@@ behind and, via the unguarded mv, a zero-byte file.
+    esc="$(sed_repl_escape "$model")"
+    sed "s|@@MODEL@@|$esc|" "$config" > "$config.tmp" && mv "$config.tmp" "$config"
   else
     grep -vF "@@MODEL@@" "$config" > "$config.tmp" && mv "$config.tmp" "$config"
   fi

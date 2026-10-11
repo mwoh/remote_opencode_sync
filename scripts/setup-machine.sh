@@ -183,9 +183,18 @@ mkdir -p "$HOME/.local/bin"
 ROE_LINK="$HOME/.local/bin/roe"
 ROE_TARGET="$ROOT_DIR/bin/roe"
 if [[ -f "$ROE_TARGET" ]]; then
-  ln -sfn "$ROE_TARGET" "$ROE_LINK"
-  ok "$ROE_LINK -> $ROE_TARGET"
-  mf_set "ROE_LINKED" "yes"
+  # Don't clobber an unrelated `roe` that happens to live at ~/.local/bin/roe: only
+  # replace it when it's absent, already ours (a symlink into this toolkit), or a plain
+  # stale symlink we previously created. A real, non-symlink foreign binary is left alone.
+  if [[ -e "$ROE_LINK" && ! -L "$ROE_LINK" ]]; then
+    warn "$ROE_LINK exists and is not a symlink — leaving it alone"
+    warn "  (move it aside if you want the toolkit's 'roe' on PATH)"
+    mf_set "ROE_LINKED" "no"
+  else
+    ln -sfn "$ROE_TARGET" "$ROE_LINK"
+    ok "$ROE_LINK -> $ROE_TARGET"
+    mf_set "ROE_LINKED" "yes"
+  fi
 else
   warn "$ROE_TARGET missing — 'roe' not linked"
   mf_set "ROE_LINKED" "no"

@@ -217,13 +217,19 @@ fi
 
 # ---- seeding helpers + conflict resolution ----
 subst() {
-  local file="$1"
-  sed "s/{{PROJECT_NAME}}/$NAME/g" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+  local file="$1" tmp="$1.tmp.$$" esc
+  # Both replacements go through sed_repl_escape: a project name or model id containing
+  # the delimiter (|), an ampersand (&) or a backslash (\) would otherwise make sed abort
+  # or corrupt the seeded file — leaving the literal placeholder behind and, via the
+  # unguarded mv, committing a zero-byte .tmp.
+  esc="$(sed_repl_escape "$NAME")"
+  sed "s|{{PROJECT_NAME}}|$esc|g" "$file" > "$tmp" && mv "$tmp" "$file"
   if grep -qF "@@MODEL@@" "$file"; then
     if [[ -n "$MODEL" ]]; then
-      sed "s|@@MODEL@@|$MODEL|g" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+      esc="$(sed_repl_escape "$MODEL")"
+      sed "s|@@MODEL@@|$esc|g" "$file" > "$tmp" && mv "$tmp" "$file"
     else
-      grep -vF "@@MODEL@@" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+      grep -vF "@@MODEL@@" "$file" > "$tmp" && mv "$tmp" "$file"
     fi
   fi
 }

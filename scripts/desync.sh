@@ -34,7 +34,11 @@ for a in "$@"; do
   esac
 done
 
-PROJECT_DIR="$(pwd)"
+# Walk up to the project root so `roe desync` works from any subdirectory, matching
+# every other roe command (track/status/upgrade/history all use project_root). Fall
+# back to $PWD when no toolkit marker is found so the guards below produce the normal
+# "not a remote_opencode_sync project" message.
+PROJECT_DIR="$(project_root "$PWD" 2>/dev/null || pwd)"
 
 # ---- guards ----
 if ! git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

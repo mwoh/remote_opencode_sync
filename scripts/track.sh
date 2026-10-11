@@ -62,7 +62,12 @@ while (($#)); do
 done
 
 if [[ "$ACTION" == "ignore" || "$ACTION" == "unignore" ]]; then
-  TARGETS=("${ARGV[@]}")
+  # Populate TARGETS only when ARGV is non-empty: expanding `"${ARGV[@]}"` on an
+  # empty array under `set -u` aborts on bash < 4.4 (macOS ships bash 3.2), and the
+  # `${ARGV[@]:-}` workaround would leave a phantom empty argument that defeats the
+  # usage check below.
+  TARGETS=()
+  ((${#ARGV[@]})) && TARGETS=("${ARGV[@]}")
   if [[ ${#TARGETS[@]} -eq 0 ]]; then
     echo "track.sh: $ACTION needs at least one <path>" >&2
     usage; exit 1

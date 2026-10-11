@@ -4,7 +4,13 @@
 
 set -euo pipefail
 
-PROJECT_DIR="$(pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
+
+# Walk up to the project root so `roe resync` works from any subdirectory, matching
+# every other roe command. Fall back to $PWD when no toolkit marker is found.
+PROJECT_DIR="$(project_root "$PWD" 2>/dev/null || pwd)"
 changed=0
 
 STATE="$PROJECT_DIR/.opencode/state/no-session-sync"

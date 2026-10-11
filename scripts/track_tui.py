@@ -91,8 +91,19 @@ class App:
         def put(row, col, text, attr=None):
             if row >= rows or col >= cols:
                 return
-            text = clip(text, cols - col)
-            stdscr.addnstr(row, col, text, cols - col, attr or curses.A_NORMAL)
+            width = cols - col
+            # curses refuses a write that touches the very last cell of the screen (the
+            # bottom-right corner) and raises curses.error. A header/footer exactly `cols`
+            # wide — e.g. the footer once self.msg is prepended — used to hit that and
+            # crash the whole TUI, so the last row never writes into the corner cell.
+            if row == rows - 1:
+                width -= 1
+            if width <= 0:
+                return
+            text = clip(text, width)
+            if not text:
+                return
+            stdscr.addnstr(row, col, text, width, attr or curses.A_NORMAL)
 
         names = [
             f"1 Tracked ({len(self.panes[0])})",

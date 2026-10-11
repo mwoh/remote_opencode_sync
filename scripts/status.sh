@@ -103,11 +103,15 @@ if project_seed_stale "$DIR"; then
 fi
 
 # --- toolkit update available on this machine? ---
+# ROE_NO_LATEST=1 skips the live `git ls-remote` probe (used by the test suite so a
+# run never depends on network reachability or the remote's tag state).
 v="$(git -C "$ROOT_DIR" describe --tags --abbrev=0 2>/dev/null || true)"
-latest="$(toolkit_latest_ver "$ROOT_DIR" 2>/dev/null || true)"
-if [[ -n "$v" && -n "$latest" && "$(ver_gt "$latest" "$v")" == "1" ]]; then
-  line "toolkit: installed $v, latest $latest — run: roe update"
-  add
+if [[ "${ROE_NO_LATEST:-0}" != "1" ]]; then
+  latest="$(toolkit_latest_ver "$ROOT_DIR" 2>/dev/null || true)"
+  if [[ -n "$v" && -n "$latest" && "$(ver_gt "$latest" "$v")" == "1" ]]; then
+    line "toolkit: installed $v, latest $latest — run: roe update"
+    add
+  fi
 fi
 
 # --- compact health summary (informational, never affects the exit code) ---

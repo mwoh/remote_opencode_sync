@@ -123,7 +123,13 @@ main() {
         if [[ -n "$pinned" ]]; then echo "$PWD -> $pinned"
         else echo "no model pinned in $PWD (pin one with: roe model <id>)"; fi
       elif [[ $# -eq 1 ]]; then
-        pin_file="$(model_set "$PWD" "$1")"
+        # Do NOT swallow model_set's failure: it returns non-zero (and prints the
+        # real error) when the config couldn't be rewritten, and we must not then
+        # report "pinned" and exit 0.
+        if ! pin_file="$(model_set "$PWD" "$1")"; then
+          echo "roe model: failed to pin '$1' in $PWD (config left unchanged)" >&2
+          return 1
+        fi
         echo "pinned model '$1' in $(basename "$pin_file") ($PWD)"
         echo "  propagate to every machine: git add $(basename "$pin_file") && git commit -m \"model: pin $1\" && git push"
       else

@@ -70,7 +70,11 @@ while [[ $# -gt 0 ]]; do
     --no-identity) DO_IDENTITY=0 ;;
     --no-plugin) DO_PLUGIN=0 ;;
     --no-clone) DO_CLONE=0 ;;
-    --conf) MANIFEST="$2"; shift ;;
+    # Guard both "no value" and "value is the next flag": without the second check,
+    # `roe uninstall --conf --dry-run` set MANIFEST="--dry-run", left DRY_RUN=0 and
+    # performed REAL deletions while the user believed they were previewing.
+    --conf) [[ $# -gt 1 && "$2" != -* ]] || { echo "error: --conf needs a path to the install manifest" >&2; usage >&2; exit 1; }
+            MANIFEST="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "error: unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -261,8 +265,16 @@ if [[ "$R_OPENCODE" -eq 1 ]]; then
   case "${OPENCODE_METHOD:-script}" in
     npm) say npm uninstall -g opencode-ai || warn "npm uninstall of opencode failed" ;;
     *)
-      say rm -rf "$HOME/.opencode"
+      # Only ever remove the opencode *binary* we installed. $HOME/.opencode also holds
+      # the user's opencode config, agents, commands and every OTHER plugin — deleting
+      # the whole directory would silently destroy unrelated work, so we leave it and
+      # tell the user to remove it themselves if they want it gone.
       if [[ -f "$HOME/.local/bin/opencode" ]]; then say rm -f "$HOME/.local/bin/opencode"; fi
+      if [[ -d "$HOME/.opencode" ]]; then
+        echo "    left $HOME/.opencode in place (your opencode config, agents, commands and"
+        echo "    other plugins live there). Remove it yourself if you want it gone:"
+        echo "      rm -rf \"$HOME/.opencode\""
+      fi
       echo "    (if the installer added a 'opencode' PATH line, remove it from ~/.bashrc, ~/.zshrc, …)"
       ;;
   esac
