@@ -61,9 +61,19 @@ owner() {
 }
 
 # repo_synced <owner> <name> — true iff the repo root carries .opencode/toolkit.
+# A gh/API failure (rate limit, expired token, network blip) is NOT the same as "the
+# marker is absent": distinguishing them keeps `roe clone` from refusing a perfectly
+# good repo because a transient API hiccup looked like "not a roe project".
 repo_synced() {
-  local own="$1" name="$2"
-  gh api "repos/$own/$name/contents/.opencode/toolkit" >/dev/null 2>&1
+  local own="$1" name="$2" out rc
+  out="$(gh api "repos/$own/$name/contents/.opencode/toolkit" 2>&1)"; rc=$?
+  if [[ $rc -eq 0 ]]; then
+    return 0                      # marker present
+  fi
+  case "$out" in
+    *"Not Found"*|*"not found"*) return 1 ;;   # marker genuinely absent
+    *) return 2 ;;                              # couldn't tell — API/auth/network
+  esac
 }
 
 # scan — emits one line per repo:
@@ -75,7 +85,16 @@ scan() {
     --template '{{range .}}{{.name}}	{{.isPrivate}}	{{.isArchived}}	{{or .description ""}}{{"\n"}}{{end}}' \
     | while IFS=$'\t' read -r name priv arch desc; do
     [[ -z "$name" ]] && continue
-    if repo_synced "$own" "$name"; then synced="yes"; else synced="no"; fi
+    # 0 = marker present, 1 = genuinely absent, 2 = couldn't tell (API/auth/network).
+    # Only 1 means "not a roe project"; a 2 would previously mark healthy repos as
+    # unsynced whenever GitHub hiccuped.
+    local rc=0
+    repo_synced "$own" "$name" || rc=$?
+    case $rc in
+      0) synced="yes" ;;
+      1) synced="no" ;;
+      *) synced="unknown" ;;
+    esac
     printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$priv" "$arch" "$synced" "$desc"
   done
 }
@@ -133,7 +152,7 @@ local_state() {
   fi
   ahead="$(git -C "$d" rev-list --count "$up..HEAD" 2>/dev/null || echo 0)"
   behind="$(git -C "$d" rev-list --count "HEAD..$up" 2>/dev/null || echo 0)"
-  dirty="$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  dirty="$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
   dirty="${dirty:-0}"
   if [[ "$behind" -gt 0 && "$ahead" -gt 0 ]]; then core="diverged ($ahead ahead, $behind behind)"
   elif [[ "$behind" -gt 0 ]]; then core="behind $behind"
@@ -169,9 +188,16 @@ local_of() {
 }
 
 cache_fresh() {
-  local own="$1" now fetched
+  local own="$1" now fetched cached_owner
   now="$(date +%s)"
   [[ -s "$CACHE_FILE" ]] || return 1
+  # The cache is written with an `owner=` header; if the cached owner is not the
+  # account we're listing for now (e.g. after `gh auth switch`), the rows belong to
+  # somebody else and must not be shown as this user's projects.
+  cached_owner="$(sed -n 's/^owner=//p' "$CACHE_FILE" | head -n1)"
+  if [[ -n "$own" && "$cached_owner" != "$own" ]]; then
+    return 1
+  fi
   fetched="$(sed -n 's/^fetched_at=//p' "$CACHE_FILE" | head -n1)"
   [[ -n "$fetched" ]] && (( now - fetched < CACHE_TTL ))
 }
@@ -327,7 +353,14 @@ clone_cmd() {
   [[ -n "$dir" ]] || dir="$name"
 
   echo ">> Checking $own/$name for remote_opencode_sync support..."
-  if ! repo_synced "$own" "$name"; then
+  local rc=0
+  repo_synced "$own" "$name" || rc=$?
+  if [[ $rc -eq 2 ]]; then
+    echo "error: could not check $own/$name — GitHub API/auth/network problem." >&2
+    echo "  (this is NOT 'not a roe project'; retry, or run: gh auth status)" >&2
+    return 1
+  fi
+  if [[ $rc -ne 0 ]]; then
     echo "error: $own/$name is not a remote_opencode_sync project (no .opencode/toolkit marker)." >&2
     echo "  list synced projects:      roe projects" >&2
     echo "  adopt a local project:     roe adopt <dir>" >&2

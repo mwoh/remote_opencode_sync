@@ -102,6 +102,17 @@ fi
 
 # ---- 2. strip the sync rules from the local AGENTS.md ----
 if [[ -n "$RULES_LINE" ]]; then
+  # Rebuilding AGENTS.md wholesale destroys uncommitted edits to it. The "tree is not
+  # clean" note at the end fired AFTER the damage and hid it, so check up front and
+  # refuse instead (the opt-out file is still written — only the file rewrite is skipped).
+  if ! git -C "$PROJECT_DIR" diff --quiet -- AGENTS.md 2>/dev/null; then
+    echo "  - AGENTS.md has uncommitted changes — NOT rewritten (commit or stash them first)"
+    AGENTS_DIRTY=1
+  else
+    AGENTS_DIRTY=0
+  fi
+fi
+if [[ -n "$RULES_LINE" && "${AGENTS_DIRTY:-0}" -eq 0 ]]; then
   OVERVIEW_LINE="$(grep -nE '^## Project overview' "$AGENTS" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
   title="$(head -n 1 "$AGENTS" | sed -E 's/ — Workflow Rules \(AGENTS\.md\)//')"
   tmp="$AGENTS.tmp.$$"
@@ -120,6 +131,8 @@ if [[ -n "$RULES_LINE" ]]; then
   git -C "$PROJECT_DIR" update-index --skip-worktree AGENTS.md
   echo "  stripped sync rules from the local AGENTS.md (kept the Project overview)"
   echo "  pinned AGENTS.md with git update-index --skip-worktree (never committed/pushed)"
+elif [[ -n "$RULES_LINE" ]]; then
+  echo "  note: AGENTS.md had uncommitted edits — left it unchanged (the sync opt-out is still in place)"
 elif [[ "$AGENTS_TRACKED" -eq 0 ]] && [[ -f "$AGENTS" ]]; then
   echo "  note: AGENTS.md is not tracked by git — leaving it unchanged"
 else

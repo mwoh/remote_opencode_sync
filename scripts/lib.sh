@@ -64,6 +64,59 @@ pkg_remove() {
   esac
 }
 
+# --- Portability helpers (GNU coreutils vs BSD/macOS) ------------------------
+# The toolkit targets bash 3.2 + BSD userland (macOS), where the GNU spellings below
+# silently misbehave: `sed -i` swallows the next argument as a backup suffix and
+# creates junk files, `realpath -m` doesn't exist, `date -Iseconds` is unsupported,
+# and `sha1sum` has no BSD equivalent by that name.
+
+# sha1_of <file> — SHA-1 digest via whichever tool this machine has.
+sha1_of() {
+  if command -v sha1sum >/dev/null 2>&1; then
+    sha1sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 1 "$1" | cut -d' ' -f1
+  fi
+}
+
+# file_mtime <file> — epoch mtime. GNU stat uses -c %Y and BSD stat uses -f %m, but
+#   GNU's `-f` is a valid (filesystem) flag, so probe with `-c` first and only fall
+#   back to `-f` — testing `stat -f %m` first prints filesystem stats on GNU.
+file_mtime() {
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
+}
+
+# iso_now — portable 'YYYY-MM-DDTHH:MM:SS' (BSD date has no -Iseconds).
+iso_now() {
+  date -u +%Y-%m-%dT%H:%M:%SZ
+}
+
+# abs_path <path> — absolute, normalized, without GNU-only `realpath -m`.
+abs_path() {
+  local p="$1" d b
+  d="$(dirname -- "$p")"
+  b="$(basename -- "$p")"
+  if [[ -d "$d" ]]; then
+    printf '%s/%s\n' "$(cd -- "$d" 2>/dev/null && pwd -P)" "$b"
+  else
+    printf '%s\n' "$p"
+  fi
+}
+
+# sed_inplace <script> <file> — portable in-place edit. GNU `sed -i` takes no
+#   suffix argument while BSD's REQUIRES one, so the bare form breaks one of the two
+#   (BSD eats the script as the suffix). Write to a temp file and rename instead.
+sed_inplace() {
+  local script="$1" file="$2" tmp
+  tmp="$file.sedinplace.$$"
+  sed "$script" "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+  mv "$tmp" "$file"
+}
+
+# upper <str> / lower <str> — bash 3.2 has no ${v^^} / ${v,,}.
+upper() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]'; }
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
 # --- Model pin helpers ------------------------------------------------------
 # Each project's opencode.json(c) can carry a "model" key so every machine that
 # clones the repo runs the same model (project config overrides the global one).
@@ -108,12 +161,31 @@ model_resolve() {
   return 1
 }
 
+# sed_repl_escape <str> — escape a string for use as the REPLACEMENT half of a
+#   sed s|||s command (backslash, ampersand, and the delimiter used by the caller).
+# Without this, a model id containing & or \ corrupts the file, and one containing the
+# delimiter (|) makes sed abort — which, combined with an unguarded mv, truncated the
+# whole opencode config to zero bytes.
+sed_repl_escape() {
+  local s="$1" out="" i ch
+  for (( i = 0; i < ${#s}; i++ )); do
+    ch="${s:i:1}"
+    case "$ch" in
+      '\\') out+='\\' ;;
+      '&')  out+='\&' ;;
+      '|')  out+='\|' ;;
+      *)    out+="$ch" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
 # model_set <dir> <id> — pins the model in a project's opencode config: rewrites
 #   an existing "model" key in place (preferring opencode.json, then opencode.jsonc),
 #   or injects one before the closing brace; creates a minimal opencode.jsonc if
 #   neither file exists. Echoes the file written.
 model_set() {
-  local dir="$1" model="$2" cfg="" tmp
+  local dir="$1" model="$2" cfg="" tmp esc
   if [[ -f "$dir/opencode.json" ]]; then cfg="$dir/opencode.json"
   elif [[ -f "$dir/opencode.jsonc" ]]; then cfg="$dir/opencode.jsonc"
   fi
@@ -125,7 +197,8 @@ model_set() {
   fi
   tmp="$cfg.tmp.$$"
   if grep -qE '"model"[[:space:]]*:[[:space:]]*"' "$cfg"; then
-    sed -E "s|(\"model\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\1$model\2|" "$cfg" > "$tmp"
+    esc="$(sed_repl_escape "$model")"
+    sed -E "s|(\"model\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\1${esc}\2|" "$cfg" > "$tmp"
   else
     awk -v model="$model" '
       # position of the first // comment that is not inside a string; 0 = none
@@ -164,7 +237,15 @@ model_set() {
         }
       }' "$cfg" > "$tmp"
   fi
-  mv "$tmp" "$cfg"
+  # Only replace the config if the rewrite actually produced a non-empty file. An
+  # unconditional `mv` after a failed sed/awk silently truncated the project's whole
+  # opencode.json(c) to zero bytes and then reported success.
+  if [[ ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    echo "error: failed to rewrite the model in $cfg (left unchanged)" >&2
+    return 1
+  fi
+  mv "$tmp" "$cfg" || { rm -f "$tmp"; return 1; }
   echo "$cfg"
 }
 

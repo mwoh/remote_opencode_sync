@@ -594,6 +594,7 @@ dependencies. Notable functions:
 | `XDG_CACHE_HOME` | `projects.sh` | where the project cache lives (`$XDG_CACHE_HOME/remote_opencode_sync/`) |
 | `UNINSTALL_STATE_DIR`, `UNINSTALL_MANIFEST` | `setup-machine.sh`, `uninstall.sh` | where the uninstall manifest is written / read |
 | `OC_SYNC_DIR` | `bootstrap.sh` | override the toolkit install directory (default `~/.local/share/remote_opencode_sync`) |
+| `OPENCODE_DB` | `history.sh` | opencode database path to read (default `~/.local/share/opencode/opencode.db`) |
 
 ## Passing advanced options through `roe`
 

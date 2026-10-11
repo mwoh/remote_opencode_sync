@@ -53,12 +53,24 @@ fi
 dirty="$(git -C "$DIR" status --porcelain 2>/dev/null)"
 stashed=0
 if [[ -n "$dirty" ]]; then
-  if ! git -C "$DIR" stash push -m "roe pull: pre-pull" >/dev/null 2>&1; then
+  # -u is required: `git status --porcelain` reports untracked files as dirty, but a
+  # plain `stash push` does NOT stash them and still exits 0 — so stashed=1 would be
+  # set without a stash entry, and the later `stash pop` would pop the user's own
+  # oldest stash instead. Verify a stash entry was really created before popping.
+  before_stash="$(git -C "$DIR" stash list 2>/dev/null | wc -l | tr -d ' ')"
+  if ! git -C "$DIR" stash push -u -m "roe pull: pre-pull" >/dev/null 2>&1; then
     echo "roe pull: could not stash $dirty local change(s) — stash them manually and re-run." >&2
     exit 1
   fi
-  stashed=1
-  echo "roe pull: stashed $dirty local change(s)"
+  after_stash="$(git -C "$DIR" stash list 2>/dev/null | wc -l | tr -d ' ')"
+  if [[ "$after_stash" -le "$before_stash" ]]; then
+    # nothing was actually stashed (e.g. only ignored files) — do not pop later
+    stashed=0
+    echo "roe pull: $dirty local change(s) present (nothing tracked to stash)"
+  else
+    stashed=1
+    echo "roe pull: stashed $dirty local change(s)"
+  fi
 fi
 
 if ! git -C "$DIR" pull --rebase; then

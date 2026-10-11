@@ -66,17 +66,27 @@ export const SessionSync = async (ctx) => {
   // globally-loaded plugin a no-op in every project that isn't a toolkit one.
   // A local (gitignored) .opencode/state/no-session-sync file opts a single
   // working copy out on this machine.
-  let toolkitChecked = false
-  let toolkitMatch = false
   const isToolkitProject = async () => {
-    if (toolkitChecked) return toolkitMatch
+    // Re-checked on every call (cheap: two stat calls) so `roe desync` / `roe resync`
+    // run MID-SESSION take effect immediately instead of after an opencode restart.
     const mk = await sh("[ -f .opencode/toolkit ] && echo yes || echo no")
     const opt = await sh("[ -f .opencode/state/no-session-sync ] && echo yes || echo no")
-    toolkitMatch =
-      mk.ok && mk.text.trim() === "yes" &&
-      !(opt.ok && opt.text.trim() === "yes")
-    toolkitChecked = true
-    return toolkitMatch
+    return mk.ok && mk.text.trim() === "yes" && !(opt.ok && opt.text.trim() === "yes")
+  }
+
+  // Only one sync may run at a time. syncStart and syncIdle are fired fire-and-forget
+  // (`void`), so without this an idle `git add -A`/`commit` can land in the middle of
+  // the start sync's stash -> pull -> pop window.
+  let syncInFlight = false
+  const withSyncLock = async (fn) => {
+    if (syncInFlight) return false
+    syncInFlight = true
+    try {
+      await fn()
+    } finally {
+      syncInFlight = false
+    }
+    return true
   }
 
   const dateStamp = () => new Date().toISOString().slice(0, 10)
@@ -109,7 +119,7 @@ export const SessionSync = async (ctx) => {
   }
 
   // --- session start: pull / rebase / push plumbing ---
-  const syncStart = async () => {
+  const syncStartInner = async () => {
     try {
       const now = Date.now()
       if (now - lastStartSync < START_DEBOUNCE_MS) {
@@ -130,7 +140,13 @@ export const SessionSync = async (ctx) => {
       if (!upstream.ok) return // unborn branch / detached HEAD — skip silently
       const remote = upstream.text.trim()
 
-      await sh("git fetch origin")
+      const fetched = await git("fetch origin")
+      if (!fetched.ok) {
+        // Ignoring this made "already synced" be asserted by silence: behind stayed 0
+        // because the remote-tracking ref was stale, and nothing was logged.
+        await log("warn", `start fetch failed (${fetched.text.trim()}) — skipping sync`)
+        return
+      }
       const behindR = await git(`rev-list --count HEAD..${remote}`)
       const aheadR = await git(`rev-list --count ${remote}..HEAD`)
       const behind = behindR.ok ? parseInt(behindR.text.trim() || "0", 10) : 0
@@ -144,20 +160,40 @@ export const SessionSync = async (ctx) => {
         if (!push.ok) await log("warn", `start push failed: ${push.text.trim()}`)
       }
 
-      if (behind > 0) {
-        if (dirty) {
-          const stashed = await git('stash push -m "session-sync: pre-pull"')
-          if (!stashed.ok) {
-            await log("warn", `start stash failed (${stashed.text.trim()}) — leaving tree alone`)
-            return
-          }
-        }
-        const pull = await git("pull --rebase")
-        if (!pull.ok) {
-          await log("error", `start pull failed — you may need to resolve a conflict: ${pull.text.trim()}`)
+      let stashed = false
+      if (behind > 0 && dirty) {
+        // -u matters: `--porcelain` counts untracked files as dirty, but a plain
+        // `stash push` doesn't stash them and still exits 0. Without verifying a stash
+        // entry was really created, the later `stash pop` would pop the user's own
+        // oldest stash and merge unrelated old work into the tree.
+        const beforeR = await git("stash list")
+        const before = beforeR.ok ? beforeR.text.split("\n").filter(Boolean).length : 0
+        const st = await git('stash push -u -m "session-sync: pre-pull"')
+        if (!st.ok) {
+          await log("warn", `start stash failed (${st.text.trim()}) — leaving tree alone`)
           return
         }
-        if (dirty) {
+        const afterR = await git("stash list")
+        const after = afterR.ok ? afterR.text.split("\n").filter(Boolean).length : 0
+        stashed = after > before
+      }
+
+      if (behind > 0) {
+        const pull = await git("pull --rebase")
+        if (!pull.ok) {
+          // Restore the stash before bailing out — otherwise the user's work sits
+          // invisible in the stash for the rest of the session. The common failure
+          // here is untracked files blocking the merge, not a merge conflict.
+          if (stashed) {
+            const pop = await git("stash pop")
+            if (!pop.ok) {
+              await log("warn", `start stash pop after failed pull conflicted: ${pop.text.trim()} — run 'git stash pop' manually`)
+            }
+          }
+          await log("error", `start pull failed: ${pull.text.trim()}`)
+          return
+        }
+        if (stashed) {
           const pop = await git("stash pop")
           if (!pop.ok) {
             await log("warn", `start stash pop conflicted: ${pop.text.trim()} — run 'git stash pop' manually`)
@@ -171,9 +207,12 @@ export const SessionSync = async (ctx) => {
       await log("error", `unexpected sync-start error: ${err?.message ?? String(err)}`)
     }
   }
+  const syncStart = async () => {
+    await withSyncLock(syncStartInner)
+  }
 
   // --- session idle: snapshot any uncommitted work as a wip commit ---
-  const syncIdle = async () => {
+  const syncIdleInner = async () => {
     try {
       const now = Date.now()
       if (now - lastIdleSync < IDLE_DEBOUNCE_MS) {
@@ -189,6 +228,11 @@ export const SessionSync = async (ctx) => {
       if (!(await isToolkitProject())) return // silent: non-toolkit projects are fully invisible
       if (!(await isRepo())) return
       if (!(await hasRemote())) return
+      // Mirrors syncStart's guard: on a detached HEAD or an unborn branch a commit here
+      // would land on a dangling ref (recoverable only via reflog) and `git push` would
+      // fail with "no upstream" — i.e. the snapshot silently disappears.
+      const upstream = await git("rev-parse --abbrev-ref --symbolic-full-name @{upstream}")
+      if (!upstream.ok) return
 
       const status = await git("status --porcelain")
       if (!status.ok || status.text.trim() === "") return // nothing to snapshot
@@ -207,6 +251,9 @@ export const SessionSync = async (ctx) => {
     } catch (err) {
       await log("error", `unexpected idle-sync error: ${err?.message ?? String(err)}`)
     }
+  }
+  const syncIdle = async () => {
+    await withSyncLock(syncIdleInner)
   }
 
   // --- compaction: keep continuity across context compression ---

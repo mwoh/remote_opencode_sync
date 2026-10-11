@@ -34,7 +34,7 @@ source "$SCRIPT_DIR/lib.sh"
 mkdir -p "$STATE_DIR"
 [[ -f "$MANIFEST" ]] || : > "$MANIFEST"
 mf_set "MANIFEST_VERSION" "1"
-mf_set "INSTALLED_AT" "$(date -Iseconds)"
+mf_set "INSTALLED_AT" "$(iso_now)"
 mf_keep "INSTALL_DIR" "$ROOT_DIR"
 mf_keep "PLUGIN_PATH" "$PLUGIN_DST"
 
@@ -47,10 +47,10 @@ ensure_tool() {
   local name="$1"
   if command -v "$name" >/dev/null 2>&1; then
     ok "$name: $(command -v "$name")"
-    mf_installed "TOOL_${name^^}_INSTALLED" "no"
+    mf_installed "TOOL_$(upper "$name")_INSTALLED" "no"
   elif pkg_install "$name"; then
     ok "$name: installed via package manager"
-    mf_installed "TOOL_${name^^}_INSTALLED" "yes"
+    mf_installed "TOOL_$(upper "$name")_INSTALLED" "yes"
   else
     warn "$name missing and I can't install it automatically"
     warn "  → install $name manually, then re-run this script"
@@ -69,11 +69,18 @@ if command -v opencode >/dev/null 2>&1; then
   mf_installed "OPENCODE_INSTALLED" "no"
   mf_keep "OPENCODE_METHOD" "existing"
 elif command -v npm >/dev/null 2>&1; then
-  npm install -g opencode-ai \
-    && mf_installed "OPENCODE_INSTALLED" "yes" \
-    || warn "opencode install via npm failed"
-  ok "opencode: installed via npm"
-  mf_keep "OPENCODE_METHOD" "npm"
+  # Only report success if npm actually succeeded — previously a failed install still
+  # ran `ok "installed via npm"` and recorded npm as the method, so `roe uninstall`
+  # would later try to remove a package that was never installed.
+  if npm install -g opencode-ai; then
+    ok "opencode: installed via npm"
+    mf_installed "OPENCODE_INSTALLED" "yes"
+    mf_keep "OPENCODE_METHOD" "npm"
+  else
+    warn "opencode install via npm failed"
+    mf_installed "OPENCODE_INSTALLED" "no"
+    warn "  → install opencode manually, then re-run this script"
+  fi
 elif curl -fsSL https://opencode.ai/install | bash; then
   ok "opencode: installed via install script"
   mf_installed "OPENCODE_INSTALLED" "yes"
@@ -112,7 +119,14 @@ KEY_FINGERPRINT="$(ssh-keygen -lf "$HOME/.ssh/id_ed25519.pub" 2>/dev/null | awk 
 mf_keep "SSH_KEY_FINGERPRINT" "$KEY_FINGERPRINT"
 SSH_KEY_TITLE="$(hostname)-opencode"
 mf_keep "SSH_KEY_TITLE" "$SSH_KEY_TITLE"
-if gh ssh-key list 2>/dev/null | grep -q "$KEY_FINGERPRINT"; then
+# An empty fingerprint makes `grep -q ""` match the FIRST line of any output, so a
+# missing/failed key read looked like "already registered" and the key was never
+# uploaded. Handle the empty case explicitly instead.
+if [[ -z "$KEY_FINGERPRINT" ]]; then
+  warn "could not read the fingerprint of ~/.ssh/id_ed25519.pub — skipping GitHub registration"
+  warn "  → add $HOME/.ssh/id_ed25519.pub to GitHub manually (Settings → SSH keys)"
+  mf_installed "SSH_KEY_REGISTERED" "no"
+elif gh ssh-key list 2>/dev/null | grep -q "$KEY_FINGERPRINT"; then
   ok "SSH key already registered on GitHub"
   mf_installed "SSH_KEY_REGISTERED" "no"
 else

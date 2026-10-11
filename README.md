@@ -24,8 +24,10 @@ continuously committed + pushed by an opencode **base prompt** (Layer 1) and a g
     `.opencode/toolkit` marker** (`new-project.sh` seeds one into every project) — other
     projects are never touched; a local `.opencode/state/no-session-sync` file turns it
     off for a single working copy.
-- Conversation history stays on each machine's local opencode storage; what travels is the
-  running summary in `CONTINUE.md` + `session-logs/` + git history — enough to fully re-orient.
+- Conversation history starts on each machine's local opencode storage, and what travels is the
+  running summary in `CONTINUE.md` + `session-logs/` + git history — enough to fully
+  re-orient. (`roe history` can additionally archive the full transcripts into the repo;
+  see "Session history backups" below.)
 
 See [PLAN.md](PLAN.md) for the full architecture.
 
@@ -46,7 +48,7 @@ on this machine, restart it to load the plugin.
 **Updates:** check what you have vs. the latest release first, then update:
 
 ```
-roe version     # "remote_opencode_sync v1.6.0" + latest -> roe update
+roe version     # "remote_opencode_sync v1.9.0" + latest -> roe update
 roe update
 ```
 
@@ -63,7 +65,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.6.0/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.9.0/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```
@@ -211,9 +213,8 @@ gh repo clone @@GITHUB_USER@@/remote_opencode_sync
 
 This public repo is the **distribution**: it ships the runtime (`bin/`, `scripts/`,
 `templates/`, `plugins/`) and the user docs, and nothing else. Its own development —
-the architecture plan, the standing session rules, the handoff/session logs, the
-test suites, and the per-machine conversation-history archives — lives in a **private
-companion repo** (`remote_opencode_sync-dev`), which is the source of truth and where
+the standing session rules, the handoff/session logs, the test suites, and the
+per-machine conversation-history archives — lives in a **private companion repo** (`remote_opencode_sync-dev`), which is the source of truth and where
 `roe`'s changes are made and released; the runtime subset is exported from there into this
 one at release time.
 

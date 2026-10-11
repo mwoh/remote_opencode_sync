@@ -15,20 +15,39 @@ if [[ -f "$STATE" ]]; then
 fi
 
 if git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  # Capture the skip-worktree flags ONCE into a variable instead of piping
+  # `git ls-files -v` into `grep -q`. With `set -o pipefail`, grep -q exits at the first
+  # match and git takes SIGPIPE (141) on a large listing, making the whole pipeline
+  # non-zero — so on repos with a few thousand tracked files the restore silently
+  # didn't happen and resync reported "was not desynced".
+  ls_v="$(git -C "$PROJECT_DIR" ls-files -v 2>/dev/null || true)"
+  pinned() { printf '%s\n' "$ls_v" | grep -qx "S $1"; }
+
   # un-pin + restore AGENTS.md if desync stripped the local copy
   if git -C "$PROJECT_DIR" ls-files --error-unmatch AGENTS.md >/dev/null 2>&1 \
-     && git -C "$PROJECT_DIR" ls-files -v | grep -q '^S AGENTS.md'; then
-    git -C "$PROJECT_DIR" update-index --no-skip-worktree AGENTS.md
-    git -C "$PROJECT_DIR" checkout -- AGENTS.md
-    echo "  restored AGENTS.md from the repo (rules back)"
-    changed=1
+     && pinned AGENTS.md; then
+    # `checkout --` discards edits made to AGENTS.md SINCE the desync; never do that
+    # silently. Warn and leave the file alone if it has been modified since.
+    if git -C "$PROJECT_DIR" diff --quiet -- AGENTS.md 2>/dev/null; then
+      git -C "$PROJECT_DIR" update-index --no-skip-worktree AGENTS.md
+      git -C "$PROJECT_DIR" checkout -- AGENTS.md
+      echo "  restored AGENTS.md from the repo (rules back)"
+      changed=1
+    else
+      echo "  AGENTS.md has uncommitted edits since the desync — left it as-is."
+      echo "  restore the rules yourself with: git checkout -- AGENTS.md"
+    fi
   fi
   # un-pin .gitignore if desync pinned a local ignore line
-  if git -C "$PROJECT_DIR" ls-files -v | grep -q '^S .gitignore'; then
-    git -C "$PROJECT_DIR" update-index --no-skip-worktree .gitignore
-    git -C "$PROJECT_DIR" checkout -- .gitignore
-    echo "  restored .gitignore from the repo"
-    changed=1
+  if pinned .gitignore; then
+    if git -C "$PROJECT_DIR" diff --quiet -- .gitignore 2>/dev/null; then
+      git -C "$PROJECT_DIR" update-index --no-skip-worktree .gitignore
+      git -C "$PROJECT_DIR" checkout -- .gitignore
+      echo "  restored .gitignore from the repo"
+      changed=1
+    else
+      echo "  .gitignore has uncommitted edits since the desync — left it as-is."
+    fi
   fi
 fi
 

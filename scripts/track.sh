@@ -123,7 +123,7 @@ remove_matching_line() {
   for needle in "$pat" "${pat#/}" "${pat%/}"; do
     line="$(tail -n +"$hdr" "$GITIGNORE" | grep -nFx "$needle" | head -n1 | cut -d: -f1 | tr -d ' ')"
     if [[ "$line" =~ ^[0-9]+$ ]]; then
-      sed -i "$((hdr + line - 1))d" "$GITIGNORE"
+      sed_inplace "$((hdr + line - 1))d" "$GITIGNORE"
       return 0
     fi
   done
@@ -136,7 +136,7 @@ normalize_abs() {
   local p abs
   p="$1"
   [[ "$p" == /* ]] || p="$ROOT/$p"
-  abs="$(realpath -m -- "$p" 2>/dev/null || true)"
+  abs="$(abs_path "$p")"
   if [[ -z "$abs" || "$abs" != "$ROOT" && "$abs" != "$ROOT/"* ]]; then
     return 1
   fi
@@ -148,7 +148,7 @@ normalize_abs() {
 rel_pattern() {
   local rel d
   rel="${1#"$ROOT"/}"
-  if d="$(realpath -m -- "$1" 2>/dev/null)" && [[ -d "$d" ]]; then
+  if d="$(abs_path "$1")" && [[ -d "$d" ]]; then
     rel="$rel/"
   fi
   [[ -n "$rel" ]] && echo "$rel"
@@ -207,8 +207,7 @@ for target in "${TARGETS[@]}"; do
       echo "$target: removed from tracking (git rm --cached) — file stays on disk"
     fi
     hdr="$(block_ensure)"
-    sed -i "${hdr}a\\
-$pat" "$GITIGNORE"
+    { head -n "$hdr" "$GITIGNORE"; printf '%s\n' "$pat"; tail -n "+$((hdr + 1))" "$GITIGNORE"; } > "$GITIGNORE.tmp.$$" && mv "$GITIGNORE.tmp.$$" "$GITIGNORE"
     echo "$target: ignored (pattern '$pat' added to the roe block of .gitignore)"
   else
     if [[ ! -e "$abs" ]] && ! git -C "$ROOT" check-ignore -q -- "$abs" 2>/dev/null; then

@@ -61,9 +61,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 
 | Path | Purpose |
 | --- | --- |
-| `AGENTS.md` | Standing session instructions: the never-leave-anything-stale mandate, conventions, test/release pointers (+ the session-start rules header — the repo dogfoods its own rules) |
 | `PLAN.md` | This document |
-| Repo-root scaffold | The toolkit repo is itself a toolkit project: `.opencode/toolkit` marker, `opencode.jsonc` (pinned model + `/resume`/`/handoff`/`/sync`), `CONTINUE.md` (running handoff), `session-logs/`, `.gitignore` — a fresh clone + `roe setup` + `opencode` is a full handoff on any machine |
 | `templates/AGENTS.md.tpl` | The base prompt / workflow rules (Layer 1) |
 | `templates/workflow-rules.md.tpl` | Rules-only block appended to existing `AGENTS.md` on adopt |
 | `templates/.gitignore.append.tpl` | Ignore patterns appended to existing `.gitignore` on adopt |
@@ -73,7 +71,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `templates/.env.example.tpl` | Reference for secret env vars (real `.env` is gitignored) |
 | `plugins/session-sync.js` | Global zero-touch sync plugin (Layer 2); acts only in projects carrying the `.opencode/toolkit` marker (opt-out: `.opencode/state/no-session-sync`) |
 | `scripts/bootstrap.sh` | One-liner install / update entry point (curl pipe) |
-| `bin/roe` | The `roe` command front-end: a single short command dispatching every script (`update`/`setup`/`new`/`adopt`/`model`/`status`/`pull`/`push`/`upgrade`/`uninstall`/`version`); symlinked into `~/.local/bin` by setup, resolved via `readlink -f` so it follows updates. `roe version` reports the installed copy vs the latest release tag on its origin (pure `git ls-remote` + awk; no auth/network-beyond-git) |
+| `bin/roe` | The `roe` command front-end: a single short command dispatching every script (`help`/`version`/`update`/`setup`/`new`/`adopt`/`projects`/`list`/`clone`/`model`/`status`/`pull`/`push`/`upgrade`/`track`/`history`/`machine`/`desync`/`resync`/`uninstall`); symlinked into `~/.local/bin` by setup, resolved via `readlink -f` so it follows updates. `roe version` reports the installed copy vs the latest release tag on its origin (pure `git ls-remote` + awk; no auth/network-beyond-git) |
 | `scripts/update.sh` | Update an already-installed toolkit |
 | `scripts/new-project.sh` | Create a repo from scratch, or adopt an existing directory (`--existing`, `--resolve`, `--scan`, `--force`, `--model`) |
 | `scripts/status.sh` | `roe status` — read-only advisory: is a directory a valid roe project, and what does it need (push/pull/diverged/dirty/desync/seed-drift/toolkit-update)? Exit 0 current · 1 not a roe project · 2 action needed |
@@ -91,8 +89,7 @@ per-category/per-tool opt-in and `--dry-run`. Project files are never touched.
 | `docs/machine-setup.md` | First-step checklist for a new machine (what the script does) |
 | `docs/daily-workflow.md` | Reference: everyday flows, edge cases, advanced options |
 | `docs/scripts-reference.md` | Reference: every script, its options, and how `roe` wires through |
-| `docs/agent-handoff.md` | Takeover guide: current state, how to run the tests, release process, gotchas |
-| `tests/` | Vendored verification harnesses: `features.sh` (205 sandbox e2e checks), `model-features.sh` (28 model-helper checks), `plugin-test.mjs` (15 plugin checks), `shims/gh` (fake GitHub for the sandbox) |
+
 
 ## Distribution — two repos (since v1.7.0)
 

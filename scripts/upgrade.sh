@@ -118,12 +118,25 @@ elif grep -qE '"command"[[:space:]]*:' "$config"; then
   manual_review "commands: 'command' key exists in $(basename "$config") but is incomplete —"
   manual_review "  merge the missing keys from $TEMPLATES_DIR/opencode.jsonc.tpl manually"
 else
-  block="$SCRIPT_DIR/.upgrade-cmdblock.$$"
-  awk 'BEGIN{p=0} /^  "command": \{/ {p=1} p {print} p && /^  \}$/ {exit}' "$TEMPLATES_DIR/opencode.jsonc.tpl" > "$block.tmp"
-  mv "$block.tmp" "$block"
-  jsonc_inject_block "$config" "$block"
+  # Scratch file goes in a temp dir with a trap, not inside the toolkit clone: an
+  # interrupted upgrade used to leave `.upgrade-cmdblock.$$` there, which then made
+  # `update.sh`'s `git checkout -- .` leave the toolkit tree dirty.
+  block="$(mktemp "${TMPDIR:-/tmp}/roe-cmdblock.XXXXXX")"
+  trap 'rm -f "$block"' EXIT
+  awk 'BEGIN{p=0} /^  "command": \{/ {p=1} p {print} p && /^  \}$/ {exit}' "$TEMPLATES_DIR/opencode.jsonc.tpl" > "$block"
+  # If the awk range ever matches nothing (template indentation change), injecting an
+  # empty block would still be reported as a successful change.
+  if [[ ! -s "$block" ]]; then
+    manual_review "commands: could not extract the command block from the template —"
+    manual_review "  merge $TEMPLATES_DIR/opencode.jsonc.tpl into $(basename "$config") manually"
+  elif jsonc_inject_block "$config" "$block"; then
+    changed "commands: injected fallback command block into $(basename "$config")"
+  else
+    manual_review "commands: failed to inject the command block into $(basename "$config") —"
+    manual_review "  merge $TEMPLATES_DIR/opencode.jsonc.tpl manually"
+  fi
   rm -f "$block"
-  changed "commands: injected fallback command block into $(basename "$config")"
+  trap - EXIT
 fi
 
 # ---- [3] AGENTS.md rules ----

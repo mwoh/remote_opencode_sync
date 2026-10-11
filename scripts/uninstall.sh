@@ -110,7 +110,7 @@ ask() {
     return
   fi
   [[ -z "$ans" ]] && ans="$def"
-  case "${ans,,}" in y|yes) ANS=0 ;; *) ANS=1 ;; esac
+  case "$(lower "$ans")" in y|yes) ANS=0 ;; *) ANS=1 ;; esac
 }
 
 echo "== remote_opencode_sync uninstall =="
@@ -293,8 +293,11 @@ fi
 if [[ "${ROE_PATH_EXPORTED:-no}" == "yes" ]]; then
   rc="$HOME/.bashrc"
   if [[ -f "$rc" ]]; then
-    say sed -i '|^export PATH="\$HOME/.local/bin:\$PATH"$|d' "$rc"
-    ok "removed the PATH line setup added to $rc"
+    if sed_inplace '\|^export PATH="\$HOME/.local/bin:\$PATH"$|d' "$rc"; then
+      ok "removed the PATH line setup added to $rc"
+    else
+      warn "could not edit $rc — remove the PATH line yourself"
+    fi
   else
     warn "$rc not found — remove the PATH line manually if it is still there"
   fi
