@@ -96,12 +96,20 @@ Two different things can get stale, and they update differently.
 
 ```
 roe version     # installed version + latest release; hints `roe update` if behind
-roe update      # pulls the latest release and refreshes the plugin
+roe update      # pull the latest release (it re-runs setup, which refreshes the plugin)
 ```
 
-There's nothing automatic here — `roe update` is the whole update path. Run it whenever
-`roe version` says you're behind (or just periodically). It only ever fast-forwards, and
-your local `@@GITHUB_USER@@` placeholder substitutions are re-applied each time.
+`roe update` pulls the release and then re-runs setup, which installs the **matching** global
+session-sync plugin into `~/.config/opencode/plugins/`. Nothing here is automatic — run it
+whenever `roe version` says you're behind.
+
+Two things to know:
+
+- **Restart opencode afterwards.** The plugin is loaded once when a session starts, so a
+  refreshed plugin only takes effect on your next opencode session.
+- **If your plugin file was hand-edited, it is overwritten.** The plugin is toolkit-owned
+  (it's listed in the uninstall manifest), so setup keeps it in sync rather than leaving a
+  stale copy. Change it in `scripts/plugins/session-sync.js` of the toolkit repo instead.
 
 ### Your projects
 

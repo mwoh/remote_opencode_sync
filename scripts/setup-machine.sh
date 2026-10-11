@@ -160,13 +160,21 @@ else
 fi
 
 banner "session-sync plugin"
-if [[ -f "$PLUGIN_DST" ]]; then
-  ok "plugin already installed"
-  mf_installed "PLUGIN_INSTALLED" "no"
-else
+# The plugin is a toolkit-owned artifact (recorded in the uninstall manifest), so a
+# `roe update` must REFRESH it, not merely skip it when the file exists. The old
+# "install only if absent" check meant every `roe update` since v1.5.8 silently left
+# the pre-update plugin running on every machine.
+if [[ ! -f "$PLUGIN_DST" ]]; then
   mkdir -p "$(dirname "$PLUGIN_DST")"
   cp "$PLUGIN_SRC" "$PLUGIN_DST"
   ok "installed $PLUGIN_SRC → $PLUGIN_DST"
+  mf_installed "PLUGIN_INSTALLED" "yes"
+elif cmp -s "$PLUGIN_SRC" "$PLUGIN_DST"; then
+  ok "plugin already up to date"
+  mf_installed "PLUGIN_INSTALLED" "no"
+else
+  cp "$PLUGIN_SRC" "$PLUGIN_DST"
+  ok "plugin updated → $PLUGIN_DST (restart opencode to load it)"
   mf_installed "PLUGIN_INSTALLED" "yes"
 fi
 
