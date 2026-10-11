@@ -55,7 +55,7 @@ Commands:
   push [dir]           push a project's committed state to its origin
   upgrade [dir]        refresh a project's sync layer to the current toolkit (non-destructive)
   track [dir]          see what a project syncs (tracked/untracked/ignored) and change it (TUI)
-  history <sub> [dir]  archive / list / show this machine's session history for a project
+  history <sub> [dir]  archive / list / show / status this machine's session history for a project
   desync               stop THIS machine's copy of a project from syncing
   resync               undo desync (bring a copy back into the sync loop)
   uninstall [opts]     reverse the install (also removes the roe symlink + PATH line)

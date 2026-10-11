@@ -444,6 +444,7 @@ machine into a compressed archive **inside the repo**, which the normal sync (or
 |-------|--------------|
 | archive path | `<project>/opencode-history/<host>/<session-id>.jsonl.gz` — **one file per session**, keyed by short hostname (`--host` overrides). Pre-v1.8.0 archives were a single rolling `<host>.jsonl.gz`; still read, and auto-migrated on the next `backup` |
 | `backup` | reads the db **read-only** (`mode=ro`), matches sessions to the project (by `project.worktree`, `project_directory.directory`, or `session.directory`), writes one JSONL record per session with every message and part's raw JSON. Unchanged sessions are **not rewritten** (a content hash decides), so repeated backups cost no git history |
+| `status` | reports whether this machine's archive is present and recent — `archive: <path> (age N d)` + `status: fresh\|stale\|missing`; **exit 0 fresh, 1 missing or stale**; `--max-age-days N` (default 7). Reads both layouts, no db. This is what the `/sync` command runs |
 | `list` | prints the archive's sessions (time · title · id · agent · message count) — no db touched |
 | `show <id>` | renders one session as a markdown transcript (text/reasoning, `[tool: …]` markers); accepts an exact id or a **unique prefix** |
 

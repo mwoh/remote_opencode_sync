@@ -18,6 +18,9 @@
 #       list archived sessions for this machine + project
 #   history.sh show <session-id> [dir] [--host <name>]
 #       render one archived session as a markdown transcript
+#   history.sh status [dir] [--host <name>] [--max-age-days N]
+#       report whether this machine's archive exists and is fresh (exit 0 fresh,
+#       1 missing/stale) — used by the /sync command's staleness warning
 #
 # --db is only meaningful for backup (defaults to $OPENCODE_DB or
 # ~/.local/share/opencode/opencode.db). --host defaults to the short hostname.
@@ -37,7 +40,8 @@ PY="$SCRIPT_DIR/history.py"
 usage() {
   echo "usage:" >&2
   echo "  history.sh backup [dir] [--db <path>] [--host <name>]" >&2
-  echo "  history.sh list   [dir] [--host <name>]" >&2
+  echo "  history.sh list   [dir] [--host <name>]
+  history.sh status [dir] [--host <name>] [--max-age-days N]" >&2
   echo "  history.sh show <session-id> [dir] [--host <name>]" >&2
 }
 
@@ -46,7 +50,7 @@ SUB="${1:-}"
 shift
 
 case "$SUB" in
-  backup|list) ;;
+  backup|list|status) ;;
   show) ;;
   --help|-h) usage; exit 0 ;;
   *) echo "history.sh: unknown subcommand: $SUB" >&2; usage; exit 1 ;;
@@ -56,11 +60,13 @@ DIR=""
 DB="${OPENCODE_DB:-$HOME/.local/share/opencode/opencode.db}"
 HOST="$(hostname -s 2>/dev/null || hostname)"
 SESSION_ID=""
+MAX_AGE_DAYS="7"
 ARGS=()
 while (($#)); do
   case "$1" in
     --db) shift; [[ $# -gt 0 ]] || { echo "history.sh: --db needs a value" >&2; exit 1; }; DB="$1"; shift ;;
     --host) shift; [[ $# -gt 0 ]] || { echo "history.sh: --host needs a value" >&2; exit 1; }; HOST="$1"; shift ;;
+    --max-age-days) shift; [[ $# -gt 0 ]] || { echo "history.sh: --max-age-days needs a value" >&2; exit 1; }; MAX_AGE_DAYS="$1"; shift ;;
     --help|-h) usage; exit 0 ;;
     --*) echo "history.sh: unknown option: $1" >&2; usage; exit 1 ;;
     *) ARGS+=("$1"); shift ;;
@@ -103,6 +109,8 @@ if [[ "$SUB" == "backup" ]]; then
     fi
   fi
   exit "$rc"
+elif [[ "$SUB" == "status" ]]; then
+  exec python3 "$PY" status --root "$ROOT" --host "$HOST" --max-age-days "$MAX_AGE_DAYS"
 elif [[ "$SUB" == "list" ]]; then
   exec python3 "$PY" list --root "$ROOT" --host "$HOST"
 else

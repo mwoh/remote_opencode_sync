@@ -64,6 +64,11 @@ pkg_remove() {
   esac
 }
 
+# The directory lib.sh lives in — resolved ONCE at source time. `${BASH_SOURCE[0]}`
+# inside a function body resolves to "environment" in some callers (e.g. bash -c), so
+# it cannot be trusted for locating the sibling templates/ directory.
+ROE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # --- Portability helpers (GNU coreutils vs BSD/macOS) ------------------------
 # The toolkit targets bash 3.2 + BSD userland (macOS), where the GNU spellings below
 # silently misbehave: `sed -i` swallows the next argument as a backup suffix and
@@ -387,6 +392,74 @@ project_commands_current() {
     grep -qE '"sync"[[:space:]]*:' "$f" && return 0
   done
   return 1
+}
+
+# project_commands_managed <dir> — the project's command block carries the ownership
+#   marker, i.e. the user has NOT hand-edited it and `roe upgrade` may safely replace
+#   the block with the current template's. Without the marker we treat the block as
+#   user-owned and only ever advise.
+project_commands_managed() {
+  local cfg f
+  for cfg in opencode.json opencode.jsonc; do
+    f="$1/$cfg"
+    [[ -f "$f" ]] || continue
+    grep -qF 'roe-managed' "$f" && return 0
+  done
+  return 1
+}
+
+# project_commands_drift <dir> — names of the fallback commands whose `template` body
+#   differs from the shipped template (whitespace-normalized), i.e. stale wording the
+#   user may want refreshed. Echoes one name per line; returns 0 if ANY drifted.
+project_commands_drift() {
+  local f tpl body cur cmd drift=1
+  tpl="${ROE_TEMPLATES_DIR:-$ROE_LIB_DIR/../templates}/opencode.jsonc.tpl"
+  [[ -f "$tpl" ]] || return 1
+  for f in "$1/opencode.json" "$1/opencode.jsonc"; do
+    [[ -f "$f" ]] || continue
+    for cmd in resume handoff sync; do
+      body="$(jsonc_command_body "$tpl" "$cmd")"
+      [[ -n "$body" ]] || continue
+      cur="$(jsonc_command_body "$f" "$cmd")"
+      [[ -n "$cur" ]] || continue
+      if [[ "$cur" != "$body" ]]; then
+        echo "$cmd"
+        drift=0
+      fi
+    done
+    return $drift
+  done
+  return 1
+}
+
+# jsonc_command_body <file> <cmd> — the `template` string of command <cmd>, whitespace-
+#   normalized (comment-aware: ignores // line comments so a trailing // on the line
+#   doesn't make every file look different).
+jsonc_command_body() {
+  awk -v want="$2" '
+    BEGIN { incmd = 0; inkey = 0; buf = "" }
+    {
+      line = $0
+      # strip a // comment that is not inside a quoted string
+      if (line ~ /^[[:space:]]*\/\//) next
+      sub(/[[:space:]]*\/\/.*$/, "", line)
+      if (!incmd) {
+        if (line ~ ("\\\"" want "\\\"[[:space:]]*:")) { incmd = 1 }
+        next
+      }
+      if (line ~ /^[[:space:]]*\}[[:space:]]*,?[[:space:]]*$/) { incmd = 0; next }
+      if (line ~ /"template"[[:space:]]*:/) {
+        if (match(line, /:[[:space:]]*"[^"]*"/)) {
+          v = substr(line, RSTART, RLENGTH)
+          sub(/^:[[:space:]]*"/, "", v); sub(/"$/, "", v)
+          if (inkey == 0) { buf = v }
+        }
+        inkey = 1
+        next
+      }
+    }
+    END { gsub(/[[:space:]]+/, " ", buf); print buf }
+  ' "$1" 2>/dev/null
 }
 
 # project_rules_current <dir> — AGENTS.md carries the sync-rules block that marks

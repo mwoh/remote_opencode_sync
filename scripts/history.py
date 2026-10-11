@@ -514,16 +514,55 @@ def render(rec):
     return "\n".join(out)
 
 
+
+def archive_status(root, host, max_age_days=7.0):
+    """Freshness of this machine's archive for a project, across BOTH layouts.
+
+    Returns (state, detail) where state is:
+      "missing" - this host has no archive at all
+      "stale"   - an archive exists but its newest file is older than max_age_days
+      "fresh"   - an archive exists and is recent
+    detail is a human-readable path (or "" when missing)."""
+    newest = None
+    newest_path = ""
+    for p in _all_archive_files(root, host):
+        try:
+            m = os.path.getmtime(p)
+        except OSError:
+            continue
+        if newest is None or m > newest:
+            newest, newest_path = m, p
+    if newest is None:
+        return "missing", ""
+    age_days = (_dt.datetime.now().timestamp() - newest) / 86400.0
+    state = "fresh" if age_days <= max_age_days else "stale"
+    return state, f"{newest_path} (age {age_days:.1f}d)"
+
+
+def _all_archive_files(root, host):
+    """Every archive file for a host: per-session files + the legacy rolled-up file."""
+    out = []
+    d = archive_dir(root, host)
+    for stem in session_ids_present(root, host):
+        out.append(os.path.join(d, stem + SUFFIX))
+    legacy = legacy_archive_path(root, host)
+    if os.path.isfile(legacy):
+        out.append(legacy)
+    return out
+
+
 # --- main --------------------------------------------------------------------
 def main(argv):
     ap = argparse.ArgumentParser(
         prog="history.py", description="per-machine opencode session-history archive"
     )
-    ap.add_argument("sub", choices=("backup", "list", "show"))
+    ap.add_argument("sub", choices=("backup", "list", "show", "status"))
     ap.add_argument("--root", required=True, help="project root")
     ap.add_argument("--host", required=True, help="short machine name")
     ap.add_argument("--db", default=os.environ.get("OPENCODE_DB") or DB_DEFAULT)
     ap.add_argument("--session", help="session id (or unique prefix)")
+    ap.add_argument("--max-age-days", type=float, default=7.0,
+                    help="status: how old the newest archive may be (default 7)")
     args = ap.parse_args(argv)
 
     if args.sub == "backup":
@@ -576,6 +615,19 @@ def main(argv):
                 "(removed the old single file)"
             )
         return 0
+
+    if args.sub == "status":
+        state, detail = archive_status(args.root, args.host, args.max_age_days)
+        if state == "missing":
+            print(f"archive: none for {args.host} in {norm(args.root)}")
+            print("  status: missing — this machine has not backed up its session history")
+            print("  fix:    run `roe history backup`")
+            return 1
+        print(f"archive: {detail}")
+        print(f"  machine: {args.host} · max age: {args.max_age_days:g}d · status: {state}")
+        if state == "stale":
+            print(f"  this machine's session history has not been archived recently — run `roe history backup`")
+        return 0 if state == "fresh" else 1
 
     # list / show read the archive, not the db
     records = read_archive(args.root, args.host)

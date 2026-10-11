@@ -25,8 +25,11 @@
 #   1   not a roe project / not a git repo / dirty tree / identity missing /
 #       pull or push failed
 #
-# Usage: upgrade.sh [dir]   (default: current directory)
+# Usage: upgrade.sh [dir] [--force-commands]
 # Env:   none
+#
+# --force-commands refreshes the fallback command block even when it has no
+# roe-managed marker (i.e. you believe the drift is just old wording, not your edits).
 
 set -u
 
@@ -36,7 +39,42 @@ TEMPLATES_DIR="$ROOT_DIR/templates"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-DIR="${1:-$PWD}"
+FORCE_COMMANDS=0
+DIR=""
+for a in "$@"; do
+  case "$a" in
+    --force-commands) FORCE_COMMANDS=1 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    *) DIR="$a" ;;
+  esac
+done
+DIR="${DIR:-$PWD}"
+
+# _refresh_command_block <config> — rebuild the project's opencode config from the
+# shipped template's `$comment` + `command` block while preserving this project's own
+# `model` pin. Rebuilding (rather than splicing the JSON in place) keeps it correct even
+# if the project reordered keys or reformatted. Returns non-zero on failure so the caller
+# advises instead of claiming a change it didn't make.
+_refresh_command_block() {
+  local cfg="$1" model block out
+  model="$(model_get "$DIR" 2>/dev/null || true)"
+  # the template's $comment + command block (everything from the marker to its closing brace)
+  block="$(awk 'BEGIN{p=0} /"\$comment".*roe-managed/ {p=1} p{print} p && /^  \}/{exit}' \
+    "$TEMPLATES_DIR/opencode.jsonc.tpl")"
+  [[ -n "$block" ]] || return 1
+  out="$(mktemp "${TMPDIR:-/tmp}/roe-cfg.XXXXXX")" || return 1
+  {
+    printf '{\n'
+    printf '  "$schema": "https://opencode.ai/config.json",\n'
+    if [[ -n "$model" ]]; then
+      printf '  "model": "%s",\n' "$model"
+    fi
+    printf '%s\n' "$block"
+    printf '}\n'
+  } > "$out" || { rm -f "$out"; return 1; }
+  mv "$out" "$cfg"
+  return 0
+}
 
 if ! project_has_marker "$DIR"; then
   echo "roe upgrade: not a remote_opencode_sync project (no .opencode/toolkit marker)" >&2
@@ -113,7 +151,32 @@ if [[ -z "$config" ]]; then
   fi
   changed "commands: created $(basename "$config") (command block + $( [[ -n "$model" ]] && echo "model $model" || echo "no pinned model" ))"
 elif project_commands_current "$DIR"; then
-  note "commands: current in $(basename "$config")"
+  # The keys are all present — but the BODIES may still be older wording than the
+  # toolkit's (e.g. a project seeded before the /sync archive-freshness check). If the
+  # block is marked roe-managed (the user didn't hand-edit it) we refresh it to the
+  # current template so everyone converges; otherwise we only advise.
+  drifted="$(project_commands_drift "$DIR" || true)"
+  if [[ -z "$drifted" ]]; then
+    note "commands: current in $(basename "$config")"
+  elif [[ "$FORCE_COMMANDS" -eq 1 ]]; then
+    # Explicit request: refresh even without the marker (the user is saying "this drift
+    # is just old wording, not my edits").
+    if _refresh_command_block "$config"; then
+      changed "commands: refreshed the command block in $(basename "$config") (--force-commands)"
+    else
+      manual_review "commands: --force-commands could not rewrite $(basename "$config") — merge $TEMPLATES_DIR/opencode.jsonc.tpl manually"
+    fi
+  elif project_commands_managed "$DIR"; then
+    if _refresh_command_block "$config"; then
+      changed "commands: refreshed the roe-managed command block in $(basename "$config") (was stale: $(echo "$drifted" | tr '\n' ' ' | sed 's/ $//'))"
+    else
+      manual_review "commands: could not refresh the roe-managed block in $(basename "$config") — merge $TEMPLATES_DIR/opencode.jsonc.tpl manually"
+    fi
+  else
+    manual_review "commands: $(basename "$config") has stale command wording ($(echo "$drifted" | tr '\n' ' ' | sed 's/ $//')) —"
+    manual_review "  it has no roe-managed marker, so it looks hand-edited and was left alone."
+    manual_review "  to adopt the current wording: roe upgrade --force-commands"
+  fi
 elif grep -qE '"command"[[:space:]]*:' "$config"; then
   manual_review "commands: 'command' key exists in $(basename "$config") but is incomplete —"
   manual_review "  merge the missing keys from $TEMPLATES_DIR/opencode.jsonc.tpl manually"
