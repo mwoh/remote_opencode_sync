@@ -200,24 +200,62 @@ else
   mf_set "ROE_LINKED" "no"
 fi
 
-BASH_RC="$HOME/.bashrc"
+# Put ~/.local/bin on PATH for the user's ACTUAL login shell. Writing only to
+# ~/.bashrc left macOS users (zsh is the default since Catalina) with `roe` installed but
+# not on PATH. Pick the rc file(s) from $SHELL, and handle fish separately (different
+# syntax and file). A shell we don't recognise still gets ~/.bashrc when it exists.
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
-if [[ -f "$BASH_RC" ]] && grep -qF "$PATH_LINE" "$BASH_RC"; then
-  if grep -q "^ROE_PATH_EXPORTED=yes$" "$MANIFEST"; then
-    ok "$BASH_RC still has the PATH line setup added"
+FISH_LINE='fish_add_path $HOME/.local/bin'
+SHELL_NAME="$(basename "${SHELL:-/bin/bash}")"
+rc_targets=()
+case "$SHELL_NAME" in
+  zsh)  rc_targets=("$HOME/.zshrc") ;;
+  fish) rc_targets=("$HOME/.config/fish/config.fish") ;;
+  bash) rc_targets=("$HOME/.bashrc") ;;
+  *)    rc_targets=("$HOME/.bashrc") ;;
+esac
+# Also handle a .bashrc on a zsh machine (bash users, or bash invoked explicitly) when it exists.
+[[ "$SHELL_NAME" == "zsh" && -f "$HOME/.bashrc" ]] && rc_targets+=("$HOME/.bashrc")
+
+if [[ "$SHELL_NAME" == "fish" ]]; then
+  FISH_RC="${rc_targets[0]}"
+  mkdir -p "$(dirname "$FISH_RC")"
+  if [[ -f "$FISH_RC" ]] && grep -qF "fish_add_path \$HOME/.local/bin" "$FISH_RC"; then
+    ok "$FISH_RC still has the PATH line setup added"
     mf_keep "ROE_PATH_EXPORTED" "yes"
   else
-    ok "$BASH_RC already has \$HOME/.local/bin on PATH (pre-existing — untouched)"
+    printf '\n# added by remote_opencode_sync setup (roe command)\n%s\n' "$FISH_LINE" >> "$FISH_RC"
+    ok "added \$HOME/.local/bin to PATH in $FISH_RC"
+    mf_set "ROE_PATH_EXPORTED" "yes"
+    echo "  → run 'roe' from a new shell (or: source $FISH_RC)"
+  fi
+else
+  # Track whether setup added the line to ANY rc file. The manifest flag is set ONCE
+  # after the loop: with zsh + a pre-existing ~/.bashrc, the "pre-existing — untouched"
+  # branch must not clobber a 'yes' recorded for ~/.zshrc, or uninstall would leave the
+  # line behind forever.
+  any_done=0
+  for BASH_RC in "${rc_targets[@]}"; do
+    if [[ -f "$BASH_RC" ]] && grep -qF "$PATH_LINE" "$BASH_RC"; then
+      if grep -q "^ROE_PATH_EXPORTED=yes$" "$MANIFEST"; then
+        ok "$BASH_RC still has the PATH line setup added"
+        any_done=1
+      else
+        ok "$BASH_RC already has \$HOME/.local/bin on PATH (pre-existing — untouched)"
+      fi
+    elif [[ -f "$BASH_RC" ]]; then
+      printf '\n# added by remote_opencode_sync setup (roe command)\n%s\n' "$PATH_LINE" >> "$BASH_RC"
+      ok "added \$HOME/.local/bin to PATH in $BASH_RC"
+      any_done=1
+      echo "  → run 'roe' from a new shell (or: source $BASH_RC)"
+    fi
+  done
+  if [[ "$any_done" -eq 1 ]]; then
+    mf_set "ROE_PATH_EXPORTED" "yes"
+  else
+    warn "no shell rc found for \$SHELL=$SHELL_NAME — prepend $HOME/.local/bin to PATH yourself to use 'roe'"
     mf_set "ROE_PATH_EXPORTED" "no"
   fi
-elif [[ -f "$BASH_RC" ]]; then
-  printf '\n# added by remote_opencode_sync setup (roe command)\n%s\n' "$PATH_LINE" >> "$BASH_RC"
-  ok "added \$HOME/.local/bin to PATH in $BASH_RC"
-  mf_set "ROE_PATH_EXPORTED" "yes"
-  echo "  → run 'roe' from a new shell (or: source $BASH_RC)"
-else
-  warn "$BASH_RC not found — prepend $HOME/.local/bin to PATH yourself to use 'roe'"
-  mf_set "ROE_PATH_EXPORTED" "no"
 fi
 
 banner "Verify"

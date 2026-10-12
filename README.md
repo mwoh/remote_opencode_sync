@@ -48,7 +48,7 @@ on this machine, restart it to load the plugin.
 **Updates:** check what you have vs. the latest release first, then update:
 
 ```
-roe version     # "remote_opencode_sync v1.11.0" + latest -> roe update
+roe version     # "remote_opencode_sync v1.12.0" + latest -> roe update
 roe update
 ```
 
@@ -65,7 +65,7 @@ to load a refreshed plugin.
 then run — do not pipe straight to `bash`:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.11.0/scripts/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/mwoh/remote_opencode_sync/v1.12.0/scripts/bootstrap.sh
 shasum -a 256 bootstrap.sh   # compare against the latest release notes
 bash bootstrap.sh
 ```

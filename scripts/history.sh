@@ -40,8 +40,8 @@ PY="$SCRIPT_DIR/history.py"
 usage() {
   echo "usage:" >&2
   echo "  history.sh backup [dir] [--db <path>] [--host <name>]" >&2
-  echo "  history.sh list   [dir] [--host <name>]
-  history.sh status [dir] [--host <name>] [--max-age-days N]" >&2
+  echo "  history.sh list   [dir] [--host <name>]" >&2
+  echo "  history.sh status [dir] [--host <name>] [--max-age-days N]" >&2
   echo "  history.sh show <session-id> [dir] [--host <name>]" >&2
 }
 

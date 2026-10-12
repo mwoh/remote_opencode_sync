@@ -18,7 +18,20 @@ ROOT="$(dirname "$(dirname "$SELF")")"
 SCRIPTS="$ROOT/scripts"
 
 # shellcheck source=lib.sh
-source "$SCRIPTS/lib.sh" 2>/dev/null || true  # needed for the 'model' subcommand
+# lib.sh provides the helpers used by `roe version` (toolkit_latest_ver/ver_gt) and
+# `roe model`. Swallowing a load failure made those subcommands print a raw
+# "command not found" and still exit 0. Record the failure and report it precisely
+# from the subcommands that actually need it, so `version`/`update` still work.
+ROE_LIB_LOADED=1
+if ! source "$SCRIPTS/lib.sh" 2>/dev/null; then
+  ROE_LIB_LOADED=0
+fi
+need_lib() {
+  [[ "$ROE_LIB_LOADED" -eq 1 ]] && return 0
+  echo "roe: $SCRIPTS/lib.sh is missing or failed to load — '$1' cannot run" >&2
+  echo "  re-install the toolkit with: roe setup   (or: roe update)" >&2
+  return 1
+}
 
 SC_UPDATE="$SCRIPTS/update.sh"
 SC_SETUP="$SCRIPTS/setup-machine.sh"
@@ -76,15 +89,28 @@ require() {
 
 main() {
   local cmd="${1:-}"
-  if [[ -z "$cmd" || "$cmd" == "-h" || "$cmd" == "--help" || "$cmd" == "help" ]]; then
+  if [[ "$cmd" == "-h" || "$cmd" == "--help" || "$cmd" == "help" ]]; then
     usage
-    return 2
+    return 0
+  fi
+  if [[ -z "$cmd" ]]; then
+    usage
+    return 0
   fi
   shift
 
   case "$cmd" in
     version)
       local v latest vr
+      if [[ "$ROE_LIB_LOADED" -ne 1 ]]; then
+        # Without lib.sh we can't ask GitHub for the latest tag; still report the
+        # installed version rather than failing outright.
+        v="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null)"
+        [[ -n "$v" ]] || v="$(git -C "$ROOT" log -1 --format=%h 2>/dev/null || echo unknown)"
+        echo "remote_opencode_sync $v"
+        echo "  latest: unknown (lib.sh unavailable — run 'roe setup')"
+        return 0
+      fi
       v="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null)"
       [[ -n "$v" ]] || v="$(git -C "$ROOT" log -1 --format=%h 2>/dev/null || echo unknown)"
       echo "remote_opencode_sync $v"
@@ -118,6 +144,7 @@ main() {
     history)     require "$SC_HISTORY" && exec "$SC_HISTORY" "$@" ;;
     model)
       local pinned pin_file
+      need_lib model || return 1
       if [[ $# -eq 0 ]]; then
         pinned="$(model_get "$PWD" || true)"
         if [[ -n "$pinned" ]]; then echo "$PWD -> $pinned"

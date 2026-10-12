@@ -47,8 +47,10 @@ fi
 # --- clone or update ---
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   echo ">> Toolkit found — updating..."
-  # discard any placeholder substitutions made on a previous run so ff-only pull works
-  git -C "$INSTALL_DIR" checkout -- . 2>/dev/null || true
+  # Reset ONLY the markdown files relink_placeholders rewrote (it touches *.md only), so
+  # the fast-forward below can proceed. Never `checkout -- .` wholesale: that silently
+  # destroyed uncommitted hand-edits to shipped scripts. Anything else dirty is refused.
+  restore_placeholder_edits "$INSTALL_DIR" || exit 1
   git -C "$INSTALL_DIR" pull --ff-only
 else
   echo ">> Cloning toolkit..."

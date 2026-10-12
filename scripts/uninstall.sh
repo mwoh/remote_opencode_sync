@@ -303,16 +303,21 @@ if [[ "${ROE_LINKED:-no}" == "yes" && -e "$HOME/.local/bin/roe" ]]; then
   ok "removed ~/.local/bin/roe symlink"
 fi
 if [[ "${ROE_PATH_EXPORTED:-no}" == "yes" ]]; then
-  rc="$HOME/.bashrc"
-  if [[ -f "$rc" ]]; then
-    if sed_inplace '\|^export PATH="\$HOME/.local/bin:\$PATH"$|d' "$rc"; then
+  # Strip the line from every rc setup may have touched (.bashrc, .zshrc, fish) — setup
+  # now picks the file from $SHELL, so .bashrc alone is no longer the only place.
+  PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+  FISH_LINE='fish_add_path $HOME/.local/bin'
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.config/fish/config.fish"; do
+    [[ -f "$rc" ]] || continue
+    if grep -qF "added by remote_opencode_sync setup" "$rc" \
+       && { grep -qF "$PATH_LINE" "$rc" || grep -qF "$FISH_LINE" "$rc"; }; then
+      # remove the marker comment, the PATH/fish line, and a trailing blank line
+      sed_inplace '/^# added by remote_opencode_sync setup (roe command)$/d' "$rc" || true
+      sed_inplace '\|^export PATH="\$HOME/.local/bin:\$PATH"$|d' "$rc" || true
+      sed_inplace '\|^fish_add_path \$HOME/.local/bin$|d' "$rc" || true
       ok "removed the PATH line setup added to $rc"
-    else
-      warn "could not edit $rc — remove the PATH line yourself"
     fi
-  else
-    warn "$rc not found — remove the PATH line manually if it is still there"
-  fi
+  done
 fi
 
 # 8. the toolkit clone (guarded: only if it looks like a toolkit clone AND lives

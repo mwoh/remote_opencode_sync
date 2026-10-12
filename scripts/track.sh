@@ -204,12 +204,17 @@ for target in "${TARGETS[@]}"; do
       continue
     fi
     if git -C "$ROOT" ls-files --error-unmatch -- "$abs" >/dev/null 2>&1; then
-      if ! git -C "$ROOT" rm --cached -q -- "$abs" 2>/dev/null; then
+      # A directory needs -r: plain `git rm --cached <dir>` aborts with
+      # "not removing ... recursively without -r", which made ignoring a directory
+      # (node_modules/, dist/ — the common case) always fail.
+      rm_args=(-q)
+      [[ -d "$abs" ]] && rm_args+=(-r)
+      if ! git -C "$ROOT" rm --cached "${rm_args[@]}" -- "$abs" 2>/dev/null; then
         echo "track.sh: failed to untrack '$target'" >&2
         fail=1
         continue
       fi
-      echo "$target: removed from tracking (git rm --cached) — file stays on disk"
+      echo "$target: removed from tracking (git rm --cached) — stays on disk"
     fi
     hdr="$(block_ensure)"
     { head -n "$hdr" "$GITIGNORE"; printf '%s\n' "$pat"; tail -n "+$((hdr + 1))" "$GITIGNORE"; } > "$GITIGNORE.tmp.$$" && mv "$GITIGNORE.tmp.$$" "$GITIGNORE"

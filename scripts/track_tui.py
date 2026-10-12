@@ -76,6 +76,14 @@ class App:
             rc, out = run(self.track_sh, self.root, ["--unignore", path])
         else:
             rc, out = run(self.track_sh, self.root, ["--ignore", path])
+        if rc != 0:
+            # A refused path (escape guard, non-roe path, …) produced no output; don't
+            # show a bare "<no output>" as if it had worked.
+            last = [l for l in out.splitlines() if l.strip()] or [
+                f"failed (exit {rc}) — nothing changed"
+            ]
+            self.msg = last[-1]
+            return
         last = [l for l in out.splitlines() if l.strip()] or ["<no output>"]
         self.msg = last[-1]
         keep = self.idx

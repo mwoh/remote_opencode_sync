@@ -29,6 +29,38 @@ relink_placeholders() {
   fi
 }
 
+# restore_placeholder_edits <repo_dir>
+#   A previous run's relink_placeholders rewrote @@GITHUB_USER@@ inside tracked *.md
+#   files, which makes `git pull --ff-only` refuse. Restore exactly those markdown files so
+#   the fast-forward can proceed — and NOTHING else.
+#
+#   The old code did `git checkout -- .`, which silently discarded every local edit in the
+#   clone (a hand-tweaked script, a half-finished change). Now, if anything OTHER than the
+#   markdown placeholder edits is dirty, we print it and return 1 so the caller can refuse
+#   to update rather than destroy work.
+restore_placeholder_edits() {
+  local dir="$1" f
+  local -a md_dirty=() other=()
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && md_dirty+=("$f")
+  done < <(git -C "$dir" status --porcelain 2>/dev/null | grep -E '^ ?M .*\.md$' | sed 's/^...//')
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && other+=("$f")
+  done < <(git -C "$dir" status --porcelain 2>/dev/null | grep -E '^ ?M ' | grep -v '\.md$' | sed 's/^...//')
+
+  if ((${#md_dirty[@]} > 0)); then
+    git -C "$dir" checkout -- "${md_dirty[@]}" 2>/dev/null || true
+    echo ">> Reset placeholder substitutions in ${#md_dirty[@]} markdown file(s)."
+  fi
+  if ((${#other[@]} > 0)); then
+    echo "!! You have local edits in the toolkit clone; 'roe update' won't overwrite them:" >&2
+    printf '    %s\n' "${other[@]}" >&2
+    echo "commit or stash them first (git -C \"$dir\" status), or discard them yourself." >&2
+    return 1
+  fi
+  return 0
+}
+
 # detect_installer — echoes the detected package manager name, or empty string.
 detect_installer() {
   if command -v apt-get >/dev/null 2>&1; then echo "apt-get"

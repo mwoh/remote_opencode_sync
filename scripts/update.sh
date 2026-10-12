@@ -24,8 +24,10 @@ if [[ "$ORIGIN" != "https://github.com/mwoh/remote_opencode_sync.git" \
   exit 1
 fi
 
-echo ">> Discarding local placeholder edits..."
-git -C "$ROOT_DIR" checkout -- . 2>/dev/null || true
+# Discard only the markdown files relink_placeholders rewrote on a previous run, so the
+# fast-forward below can proceed. Anything else that is dirty is a real local edit and is
+# reported rather than silently destroyed (the old `git checkout -- .` threw it away).
+restore_placeholder_edits "$ROOT_DIR" || exit 1
 
 echo ">> Pulling latest toolkit..."
 git -C "$ROOT_DIR" pull --ff-only
