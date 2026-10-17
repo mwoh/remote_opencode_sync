@@ -47,10 +47,17 @@ fi
 # --- clone or update ---
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   echo ">> Toolkit found — updating..."
-  # Reset ONLY the markdown files relink_placeholders rewrote (it touches *.md only), so
-  # the fast-forward below can proceed. Never `checkout -- .` wholesale: that silently
-  # destroyed uncommitted hand-edits to shipped scripts. Anything else dirty is refused.
-  restore_placeholder_edits "$INSTALL_DIR" || exit 1
+  # shellcheck source=lib.sh
+  source "$INSTALL_DIR/scripts/lib.sh"
+  # A clone from <=v1.11.0 predates restore_placeholder_edits (added in v1.12.0), so sourcing
+  # its lib.sh does not define the helper. Fall back to resetting ONLY tracked markdown, which
+  # is what a previous relink_placeholders run substituted. Anything else stays untouched, and
+  # the --ff-only pull below refuses rather than clobbering it.
+  if command -v restore_placeholder_edits >/dev/null 2>&1; then
+    restore_placeholder_edits "$INSTALL_DIR" || exit 1
+  else
+    git -C "$INSTALL_DIR" checkout -- '*.md' 2>/dev/null || true
+  fi
   git -C "$INSTALL_DIR" pull --ff-only
 else
   echo ">> Cloning toolkit..."

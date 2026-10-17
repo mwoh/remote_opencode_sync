@@ -27,6 +27,10 @@ fi
 # Discard only the markdown files relink_placeholders rewrote on a previous run, so the
 # fast-forward below can proceed. Anything else that is dirty is a real local edit and is
 # reported rather than silently destroyed (the old `git checkout -- .` threw it away).
+# lib.sh MUST be sourced before the call — restore_placeholder_edits is defined there, and
+# calling it first aborts the whole update under `set -e`.
+# shellcheck source=lib.sh
+source "$ROOT_DIR/scripts/lib.sh"
 restore_placeholder_edits "$ROOT_DIR" || exit 1
 
 echo ">> Pulling latest toolkit..."
@@ -36,6 +40,8 @@ echo ">> Re-running setup (refreshes the global session-sync plugin)..."
 "$ROOT_DIR/scripts/setup-machine.sh"
 
 echo ">> Re-linking placeholders..."
+# Re-sourced deliberately: the pull above may have shipped a newer lib.sh, and relinking
+# should run against the code that was just pulled, not the pre-pull copy.
 # shellcheck source=lib.sh
 source "$ROOT_DIR/scripts/lib.sh"
 relink_placeholders "$ROOT_DIR"
