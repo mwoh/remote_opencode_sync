@@ -119,14 +119,18 @@ KEY_FINGERPRINT="$(ssh-keygen -lf "$HOME/.ssh/id_ed25519.pub" 2>/dev/null | awk 
 mf_keep "SSH_KEY_FINGERPRINT" "$KEY_FINGERPRINT"
 SSH_KEY_TITLE="$(hostname)-opencode"
 mf_keep "SSH_KEY_TITLE" "$SSH_KEY_TITLE"
-# An empty fingerprint makes `grep -q ""` match the FIRST line of any output, so a
-# missing/failed key read looked like "already registered" and the key was never
-# uploaded. Handle the empty case explicitly instead.
-if [[ -z "$KEY_FINGERPRINT" ]]; then
-  warn "could not read the fingerprint of ~/.ssh/id_ed25519.pub — skipping GitHub registration"
+# Compare the KEY BODY, not the SHA256 fingerprint: `gh ssh-key list` prints
+# title/key-type/key-body/date/id and has NO fingerprint column, so grepping its output for
+# "SHA256:..." could never match — the "already registered" branch was dead code and every
+# `roe update` re-ran `gh ssh-key add` (GitHub deduped it, but the manifest recorded
+# SSH_KEY_REGISTERED=yes on every run). An empty body makes `grep -q ""` match the first
+# line of any output, so handle the unreadable case explicitly too.
+KEY_BODY="$(awk '{print $2}' "$HOME/.ssh/id_ed25519.pub" 2>/dev/null || true)"
+if [[ -z "$KEY_BODY" ]]; then
+  warn "could not read the key in ~/.ssh/id_ed25519.pub — skipping GitHub registration"
   warn "  → add $HOME/.ssh/id_ed25519.pub to GitHub manually (Settings → SSH keys)"
   mf_installed "SSH_KEY_REGISTERED" "no"
-elif gh ssh-key list 2>/dev/null | grep -q "$KEY_FINGERPRINT"; then
+elif gh ssh-key list 2>/dev/null | grep -qF "$KEY_BODY"; then
   ok "SSH key already registered on GitHub"
   mf_installed "SSH_KEY_REGISTERED" "no"
 else
